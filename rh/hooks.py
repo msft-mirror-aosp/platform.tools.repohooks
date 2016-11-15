@@ -344,27 +344,30 @@ def check_commit_msg_changeid_field(project, commit, desc, _diff, options=None):
 TEST_MSG = """Commit message is missing a "Test:" line.  It must match:
 %s
 
-The Test: stanza is free-form and should describe how you tested your change.
-As a CL author, you'll have a consistent place to describe the testing strategy
-you use for your work. As a CL reviewer, you'll be reminded to discuss testing
-as part of your code review, and you'll more easily replicate testing when you
-patch in CLs locally.
+Your "Test:" description should list how your change is being tested with
+automated tests. If you're submitting a bugfix and there's an obvious unit test
+being checked in with your CL, you can just say "Test: Included", or better,
+"Test: Covered by new unit test FooTest#testBlahBlahScenario". If your change is
+already covered by unit tests, say so (and while that's fair for a
+refactoring-only change, a behavior change should normally require some
+updated test).
 
-Some examples below:
+If it really isn't practical to test the feature with a unit/regression/UI test,
+you can add a manual test. This should be checked in as a markdown file in
+tools/adt/idea/manual-tests/ listing how the feature should be tested.
+However, this should *only* be used when really, really necessary; we want to
+keep the set of manual tests as low as possible. You need to justify in
+the commit message why this could currently only be a manual test.
 
-Test: make WITH_TIDY=1 mmma art
-Test: make test-art
-Test: manual - took a photo
-Test: refactoring CL. Existing unit tests still pass.
+Keep this in mind not just for your own commit messages but help us enforce it
+when you're doing code reviews as well.
 
-Check the Gerrit history for more examples. It's a free-form field, so we urge
-you to develop conventions that make sense for your project. Note that many
-projects use exact test commands, which are perfectly fine.
+Check the Gerrit history for more examples.
 
 Adding good automated tests with new code is critical to our goals of keeping
-Android stable and constantly improving Android quality. Please use Test: to
-highlight this area of your development. And reviewers, please insist on
-high-quality Test: descriptions.
+Android Studio stable and constantly improving Android Studio and DevTools
+quality. Please use Test: to highlight this area of your development.
+And reviewers, please insist on high-quality Test: descriptions.
 """
 
 
