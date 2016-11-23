@@ -135,6 +135,7 @@ some_dog = tool --no-cat-in-commit-message ${PREUPLOAD_COMMIT_MESSAGE}
 This section allows for turning on common/builtin hooks.  There are a bunch of
 canned hooks already included geared towards AOSP style guidelines.
 
+* `buildifier`: Run BUILD files through `buildifier --mode=check`.
 * `checkpatch`: Run commits through the Linux kernel's `checkpatch.pl` script.
 * `clang_format`: Run git-clang-format against the commit. The default style is
   `file`.

@@ -342,6 +342,11 @@ class BuiltinHooksTests(unittest.TestCase):
                 'subj\n\nTEST: I1234\n',
             ))
 
+    def test_buildifier(self, mock_check, _mock_run):
+        """Verify the buildifier builtin hook."""
+        self._test_file_filter(mock_check, rh.hooks.check_buildifier,
+                               ('BUILD',))
+
     def test_cpplint(self, mock_check, _mock_run):
         """Verify the cpplint builtin hook."""
         self._test_file_filter(mock_check, rh.hooks.check_cpplint,

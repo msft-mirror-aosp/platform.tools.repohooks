@@ -371,6 +371,22 @@ And reviewers, please insist on high-quality Test: descriptions.
 """
 
 
+def check_buildifier(project, commit, _desc, diff, options=None):
+    """Checks that BUILD files are formatted with buildifier."""
+    filtered = _filter_diff(diff, [r'BUILD$'])
+    if not filtered:
+        return
+
+    buildifier = options.tool_path('buildifier')
+    cmd = [buildifier, '--mode=check'] + options.args(
+        ('${PREUPLOAD_FILES}',), filtered)
+    result = _run_command(cmd)
+    if result.output:
+        error = "The following BUILD files need formatting.\n" + result.output
+        return [rh.results.HookResult(
+            'buildifier', project, commit, error=error)]
+
+
 def check_commit_msg_test_field(project, commit, desc, _diff, options=None):
     """Check the commit message for a 'Test:' line."""
     field = 'Test'
@@ -508,6 +524,7 @@ def check_xmllint(project, commit, _desc, diff, options=None):
 # Hooks that projects can opt into.
 # Note: Make sure to keep the top level README.md up to date when adding more!
 BUILTIN_HOOKS = {
+    'buildifier': check_buildifier,
     'checkpatch': check_checkpatch,
     'clang_format': check_clang_format,
     'commit_msg_bug_field': check_commit_msg_bug_field,
@@ -523,6 +540,7 @@ BUILTIN_HOOKS = {
 # Additional tools that the hooks can call with their default values.
 # Note: Make sure to keep the top level README.md up to date when adding more!
 TOOL_PATHS = {
+    'buildifier': 'buildifier',
     'clang-format': 'clang-format',
     'cpplint': os.path.join(TOOLS_DIR, 'cpplint.py'),
     'git-clang-format': 'git-clang-format',
