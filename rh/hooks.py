@@ -270,6 +270,22 @@ def check_custom(project, commit, _desc, diff, options=None, **kwargs):
                       **kwargs)
 
 
+def check_buildifier(project, commit, _desc, diff, options=None):
+    """Checks that BUILD files are formatted with buildifier."""
+    filtered = _filter_diff(diff, [r'BUILD$'])
+    if not filtered:
+        return
+
+    buildifier = options.tool_path('buildifier')
+    cmd = [buildifier, '--mode=check'] + options.args(
+        ('${PREUPLOAD_FILES}',), filtered)
+    result = _run_command(cmd)
+    if result.output:
+        error = "The following BUILD files need formatting.\n" + result.output
+        return [rh.results.HookResult(
+            'buildifier', project, commit, error=error)]
+
+
 def check_checkpatch(project, commit, _desc, diff, options=None):
     """Run |diff| through the kernel's checkpatch.pl tool."""
     tool = get_helper_path('checkpatch.pl')
@@ -369,22 +385,6 @@ Android Studio stable and constantly improving Android Studio and DevTools
 quality. Please use Test: to highlight this area of your development.
 And reviewers, please insist on high-quality Test: descriptions.
 """
-
-
-def check_buildifier(project, commit, _desc, diff, options=None):
-    """Checks that BUILD files are formatted with buildifier."""
-    filtered = _filter_diff(diff, [r'BUILD$'])
-    if not filtered:
-        return
-
-    buildifier = options.tool_path('buildifier')
-    cmd = [buildifier, '--mode=check'] + options.args(
-        ('${PREUPLOAD_FILES}',), filtered)
-    result = _run_command(cmd)
-    if result.output:
-        error = "The following BUILD files need formatting.\n" + result.output
-        return [rh.results.HookResult(
-            'buildifier', project, commit, error=error)]
 
 
 def check_commit_msg_test_field(project, commit, desc, _diff, options=None):
