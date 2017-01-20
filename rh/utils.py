@@ -20,6 +20,7 @@ from __future__ import print_function
 import errno
 import functools
 import os
+import platform
 import signal
 import subprocess
 import sys
@@ -312,6 +313,9 @@ def run_command(cmd, error_message=None, redirect_stdout=False,
 
     if quiet:
         stdout_to_pipe, combine_stdout_stderr = True, True
+
+    if platform.system() == 'Windows':
+        close_fds = False
 
     # Set default for variables.
     stdout = None

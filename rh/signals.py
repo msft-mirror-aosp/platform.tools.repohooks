@@ -18,14 +18,19 @@
 from __future__ import print_function
 
 import os
+import platform
 import signal
 import sys
 
-_path = os.path.realpath(__file__ + '/../..')
+_path = os.path.realpath(os.path.join(__file__, '..', '..'))
 if sys.path[0] != _path:
     sys.path.insert(0, _path)
 del _path
 
+if platform.system() == 'Windows':
+    _signal_sigusr1 = signal.SIG_IGN
+else:
+    _signal_sigusr1 = ignal.SIGUSR1
 
 def relay_signal(handler, signum, frame):
     """Notify a listener returned from getsignal of receipt of a signal.
@@ -44,7 +49,7 @@ def relay_signal(handler, signum, frame):
     return True
 
 
-def signal_module_usable(_signal=signal.signal, _SIGUSR1=signal.SIGUSR1):
+def signal_module_usable(_signal=signal.signal, _SIGUSR1=_signal_sigusr1):
     """Verify that the signal module is usable and won't segfault on us.
 
     See http://bugs.python.org/issue14173.  This function detects if the
@@ -63,6 +68,8 @@ def signal_module_usable(_signal=signal.signal, _SIGUSR1=signal.SIGUSR1):
     Note that this functionality is intended to be removed just as soon
     as all consuming code installs their own SIGTERM handlers.
     """
+    if platform.system() == 'Windows':
+        return True
     # Track any signals we receive while doing the check.
     received, actual = [], None
     def handler(signum, frame):

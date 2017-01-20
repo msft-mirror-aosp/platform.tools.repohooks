@@ -242,11 +242,11 @@ def _run_project_hooks(project_name, proj_dir=None,
         print('Did you run repo start?', file=sys.stderr)
         sys.exit(1)
     os.environ.update({
-        'REPO_LREV': rh.git.get_commit_for_ref(upstream_branch),
-        'REPO_PATH': proj_dir,
-        'REPO_PROJECT': project_name,
-        'REPO_REMOTE': remote,
-        'REPO_RREV': rh.git.get_remote_revision(upstream_branch, remote),
+        'REPO_LREV': str(rh.git.get_commit_for_ref(upstream_branch)),
+        'REPO_PATH': str(proj_dir),
+        'REPO_PROJECT': str(project_name),
+        'REPO_REMOTE': str(remote),
+        'REPO_RREV': str(rh.git.get_remote_revision(upstream_branch, remote)),
     })
 
     output = Output(project_name, len(hooks))
