@@ -335,6 +335,10 @@ def check_google_java_format(project, commit, _desc, _diff, options=None):
                  '--google-java-format-diff', google_java_format_diff,
                  '--commit', commit] + options.args()
     cmd = [tool] + tool_args
+    # Windows does not support running .py scripts directly
+    # Note this assumes "python" is in the path
+    if platform.system() == 'Windows':
+        cmd = ['python.exe'] + cmd
     fixup_func = _fixup_func_caller([tool, '--fix'] + tool_args)
     return _check_cmd('google-java-format', project, commit, cmd,
                       fixup_func=fixup_func)

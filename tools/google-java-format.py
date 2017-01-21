@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import argparse
 import os
+import platform
 import sys
 from distutils.spawn import find_executable
 
@@ -52,16 +53,34 @@ def get_parser():
     return parser
 
 
+def find_executable_portable(executable):
+  if platform.system() == 'Windows':
+    if os.path.isfile(executable):
+        return executable
+    path = os.environ['PATH']
+    paths = path.split(os.pathsep)
+    for path in paths:
+        file = os.path.join(path, executable)
+        if os.path.isfile(file):
+            return file
+    return ""
+  else:
+    return find_executable(executable)
+
 def main(argv):
     """The main entry."""
     parser = get_parser()
     opts = parser.parse_args(argv)
+    # Escaping is done incorrectly on Windows (because of '\\' in paths)
+    if platform.system() == 'Windows':
+        opts.google_java_format = opts.google_java_format.strip('\'')
+        opts.google_java_format_diff = opts.google_java_format_diff.strip('\'')
 
     # google-java-format-diff.py looks for google-java-format in $PATH, so find
     # the parent dir up front and inject it into $PATH when launching it.
     # TODO: Pass the path in directly once this issue is resolved:
     # https://github.com/google/google-java-format/issues/108
-    format_path = find_executable(opts.google_java_format)
+    format_path = find_executable_portable(opts.google_java_format)
     if not format_path:
         print('Unable to find google-java-format at %s' %
               opts.google_java_format)
@@ -72,6 +91,18 @@ def main(argv):
                             os.pathsep,
                             os.environ['PATH'])
     }
+
+    # Add $JAVA_HOME\bin to path so that java is found
+    if platform.system() == 'Windows':
+        java_path = find_executable_portable("java.exe")
+        if not java_path:
+            java_home = os.environ['JAVA_HOME']
+            if java_home:
+                extra_env = {
+                    'PATH': '%s%s%s' % (os.path.join(java_home, 'bin'),
+                                        os.pathsep,
+                                        extra_env['PATH'])
+                }
 
     # TODO: Delegate to the tool once this issue is resolved:
     # https://github.com/google/google-java-format/issues/107
@@ -84,14 +115,22 @@ def main(argv):
     if not opts.sort_imports:
         cmd.extend(['--skip-sorting-imports'])
 
+    # Windows does not support running .py scripts directly
+    # Note this assumes "python" is in the path
+    if platform.system() == 'Windows':
+        cmd = ['python.exe'] + cmd
     stdout = rh.utils.run_command(cmd,
                                   input=diff,
                                   capture_output=True,
                                   extra_env=extra_env).output
     if stdout != '':
         print('One or more files in your commit have Java formatting errors.')
-        print('You can run `%s --fix %s` to fix this' %
-              (sys.argv[0], rh.shell.cmd_to_str(argv)))
+        if platform.system() == 'Windows':
+            print('You can run `python %s --fix %s` to fix this' %
+                  (sys.argv[0], rh.shell.cmd_to_str(argv).replace("'", "\"")))
+        else:
+            print('You can run `%s --fix %s` to fix this' %
+                  (sys.argv[0], rh.shell.cmd_to_str(argv)))
         return 1
 
     return 0
