@@ -260,7 +260,7 @@ def _fixup_func_caller(cmd, **kwargs):
     def wrapper():
         result = _run_command(cmd, **kwargs)
         if result.returncode not in (None, 0):
-            return result.output
+            return result.error
         return None
     return wrapper
 
@@ -334,12 +334,16 @@ def check_google_java_format(project, commit, _desc, _diff, options=None):
     tool_args = ['--google-java-format', google_java_format,
                  '--google-java-format-diff', google_java_format_diff,
                  '--commit', commit] + options.args()
-    cmd = [tool] + tool_args
+
     # Windows does not support running .py scripts directly
     # Note this assumes "python" is in the path
     if platform.system() == 'Windows':
-        cmd = ['python.exe'] + cmd
-    fixup_func = _fixup_func_caller([tool, '--fix'] + tool_args)
+        run_tool = ['python.exe', tool]
+    else:
+        run_tool = [tool]
+
+    cmd = run_tool + tool_args
+    fixup_func = _fixup_func_caller(run_tool + ['--fix'] + tool_args)
     return _check_cmd('google-java-format', project, commit, cmd,
                       fixup_func=fixup_func)
 
