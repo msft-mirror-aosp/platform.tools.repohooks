@@ -30,7 +30,7 @@ del _path
 if platform.system() == 'Windows':
     _signal_sigusr1 = signal.SIG_IGN
 else:
-    _signal_sigusr1 = ignal.SIGUSR1
+    _signal_sigusr1 = signal.SIGUSR1
 
 def relay_signal(handler, signum, frame):
     """Notify a listener returned from getsignal of receipt of a signal.
