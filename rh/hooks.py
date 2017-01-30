@@ -297,7 +297,14 @@ def check_buildifier(project, commit, _desc, diff, options=None):
         ('${PREUPLOAD_FILES}',), filtered)
     result = _run_command(cmd)
     if result.output:
-        error = "The following BUILD files need formatting.\n" + result.output
+        paths = [os.path.join(project.dir, entry.file) for entry in filtered]
+        error = (
+            result.output +
+            "\nBUILD files need formatting." +
+            "\nTo reformat the BUILD files in this commit:" +
+            "\n\n" + buildifier + " " + " ".join(paths) +
+            "\n\n"
+        )
         return [rh.results.HookResult(
             'buildifier', project, commit, error=error)]
 
