@@ -288,7 +288,7 @@ def check_custom(project, commit, _desc, diff, options=None, **kwargs):
 
 def check_buildifier(project, commit, _desc, diff, options=None):
     """Checks that BUILD files are formatted with buildifier."""
-    filtered = _filter_diff(diff, [r'BUILD$'])
+    filtered = _filter_diff(diff, [r'BUILD$', r'BUILD\.bazel$'])
     if not filtered:
         return
 
