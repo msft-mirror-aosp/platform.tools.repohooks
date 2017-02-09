@@ -58,6 +58,7 @@ class Output(object):
     RUNNING = COLOR.color(COLOR.YELLOW, 'RUNNING')
     PASSED = COLOR.color(COLOR.GREEN, 'PASSED')
     FAILED = COLOR.color(COLOR.RED, 'FAILED')
+    WARNING = COLOR.color(COLOR.RED, 'WARNING')
 
     def __init__(self, project_name, num_hooks):
         """Create a new Output object for a specified project.
@@ -258,6 +259,15 @@ def _run_project_hooks(project_name, proj_dir=None,
 
     ret = True
     fixup_func_list = []
+
+    if len(commit_list) > 1:
+        # google_java_format cannot handle stacked changes well.
+        hooks = [(name, hook) for (name, hook) in hooks if name != 'google_java_format']
+
+        msg = ("Skipping google_java_format check, because multiple changes are " +
+               "being uploaded. Please run the formatter manually on all changes.")
+        status_line = '[%s] %s' % (Output.WARNING, msg)
+        rh.terminal.print_status_line(status_line, print_newline=True)
 
     for commit in commit_list:
         # Mix in some settings for our hooks.
