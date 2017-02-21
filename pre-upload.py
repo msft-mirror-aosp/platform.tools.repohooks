@@ -265,9 +265,26 @@ def _run_project_hooks(project_name, proj_dir=None,
         hooks = [(name, hook) for (name, hook) in hooks if name != 'google_java_format']
 
         msg = ("Skipping google_java_format check, because multiple changes are " +
-               "being uploaded. Please run the formatter manually on all changes.")
+               "being uploaded. Please run the formatter manually on all changes:")
         status_line = '[%s] %s' % (Output.WARNING, msg)
         rh.terminal.print_status_line(status_line, print_newline=True)
+
+        replacer = rh.hooks.Placeholders()
+        google_java_format = replacer.expand_vars([config.tool_paths['google-java-format']])[0]
+        google_java_format_diff = replacer.expand_vars([config.tool_paths['google-java-format-diff']])[0]
+        cmd = [
+            rh.hooks.get_helper_path('google-java-format.py'),
+            '--google-java-format',
+            google_java_format,
+            '--google-java-format-diff',
+            google_java_format_diff,
+            '--fix',
+            '--sort-imports',
+        ]
+
+        print()
+        print('git rebase {branch} --exec "{cmd}"'.format(branch=rh.git.get_upstream_branch(), cmd=' '.join(cmd)))
+        print()
 
     for commit in commit_list:
         # Mix in some settings for our hooks.
