@@ -260,7 +260,7 @@ def _run_project_hooks(project_name, proj_dir=None,
     ret = True
     fixup_func_list = []
 
-    if len(commit_list) > 1:
+    if project_name == "platform/tools/base" and len(commit_list) > 1:
         # google_java_format cannot handle stacked changes well.
         hooks = [(name, hook) for (name, hook) in hooks if name != 'google_java_format']
 
