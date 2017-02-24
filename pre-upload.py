@@ -260,9 +260,10 @@ def _run_project_hooks(project_name, proj_dir=None,
     ret = True
     fixup_func_list = []
 
-    if project_name == "platform/tools/base" and len(commit_list) > 1:
-        # google_java_format cannot handle stacked changes well.
-        hooks = [(name, hook) for (name, hook) in hooks if name != 'google_java_format']
+    # Disable google_java_format and print a warning for stacked changes, which it
+    # can't handle.
+    if len(commit_list) > 1 and has_hook(hooks, "google_java_format"):
+        hooks = remove_hook(hooks, "google_java_format")
 
         msg = ("Skipping google_java_format check, because multiple changes are " +
                "being uploaded. Please run the formatter manually on all changes:")
@@ -412,6 +413,14 @@ def direct_main(argv):
     else:
         return 1
 
+def has_hook(hooks, name):
+    for (n, h) in hooks:
+        if name == n:
+            return True
+    return False
+
+def remove_hook(hooks, name):
+    return [(n, h) for (n, h) in hooks if n != name]
 
 if __name__ == '__main__':
     sys.exit(direct_main(sys.argv[1:]))
