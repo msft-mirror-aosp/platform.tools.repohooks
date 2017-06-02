@@ -129,7 +129,8 @@ def main():
       sys.exit(p.returncode);
 
     if not args.i:
-      with open(filename) as f:
+      # Open in binary mode to prevent Python from messing with line endings.
+      with open(filename, 'rb') as f:
         code = f.readlines()
       formatted_code = StringIO.StringIO(stdout).readlines()
       diff = difflib.unified_diff(code, formatted_code,
