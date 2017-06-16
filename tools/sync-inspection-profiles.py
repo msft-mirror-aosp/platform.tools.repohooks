@@ -133,16 +133,15 @@ def main(argv):
       return 1
 
     diffs = []
-    for i, inspection in enumerate(inspections_root.findall(
-              'profile[@version="1.0"]/inspection_tool')):
+    for i, inspection in enumerate(inspections_root.findall('inspection_tool')):
       c = inspection.get('class')
       e = subset_inspections.get(c, None)
       if e is not None:
         if not are_equal(e, inspection):
           diffs.append(c)
+          inspections_root.insert(i + 1, copy.deepcopy(e))
           inspections_root.remove(inspection)
-          inspections_root.insert(i, copy.deepcopy(e))
-          del subset_inspections[c]
+        del subset_inspections[c]
 
     absent = []
     for c, e in subset_inspections.iteritems():
