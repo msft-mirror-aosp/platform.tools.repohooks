@@ -25,6 +25,7 @@ import traceback
 import copy
 
 from xml.etree import ElementTree as etree
+from collections import defaultdict
 
 # tools/repohooks isn't a package in Python sense, so need to patch PYTHONPATH
 # to include rh.* in order to be able to import useful utils from there.
@@ -67,6 +68,33 @@ def are_equal(e1, e2):
       return False
 
     return all(are_equal(c1, c2) for c1, c2 in zip(e1, e2))
+
+
+def has_duplicates(occurences, profile_name):
+  """
+  Checks if there are any duplicates within the given inspection classes
+  occurences dictionary, and reports it on the console.
+
+  Args:
+    occurences: defaultdict mapping inspection class to its frequency in the
+    profile
+
+  Returns:
+    True if there is at least one item with frequency more than one,
+    False otherwise.
+  """
+  duplicates = ["{0}: {1}".format(c, f)
+                for c, f in occurences.iteritems() if f > 1]
+  if duplicates:
+    print(
+      "When parsing {0}, the following inspection classes had "
+      "more than one XML entry. This is not correct and most likely "
+      "signifies a manual XML manipulation error. Please remove duplicates: "
+      "\n\n{1}\n\n".format(profile_name, "\n".join(duplicates))
+    )
+    return True
+
+  return False
 
 
 def main(argv):
@@ -115,9 +143,15 @@ def main(argv):
       return 1
 
     subset_inspections = {}
+    # Also want to track if there are multiple entires for the same inspection
+    # class. Want to report this and fail - it shouldn't be the case and
+    # most likely signifies a manual XML manipulation error.
+    subset_inspection_occurences = defaultdict(int)
     for inspection in inspections_root.findall('inspection_tool'):
+      inspection_class = inspection.get('class')
+      subset_inspection_occurences[inspection_class] += 1
       if inspection.get('enabled') == 'true':
-        subset_inspections[inspection.get('class')] = inspection
+        subset_inspections[inspection_class] = inspection
 
     # Now go through the superset profile and see if any of the elements differ,
     # replacing them in-place with a deep copy of the corresponding element from
@@ -133,8 +167,10 @@ def main(argv):
       return 1
 
     diffs = []
+    superset_inspection_occurences = defaultdict(int)
     for i, inspection in enumerate(inspections_root.findall('inspection_tool')):
       c = inspection.get('class')
+      superset_inspection_occurences[c] += 1
       e = subset_inspections.get(c, None)
       if e is not None:
         if not are_equal(e, inspection):
@@ -148,7 +184,16 @@ def main(argv):
       absent.append(c)
       inspections_root.append(e)
 
-    # Dump the new profile instead of the existing one
+    # Intentionally avoid short-circuit evaluation as we want to report all
+    # at once
+    if (has_duplicates(subset_inspection_occurences, "subset profile")
+          | has_duplicates(superset_inspection_occurences, "superset profile")):
+      print(
+        "ERROR: Please correct the reported duplicate entries in the XML "
+        "in order to proceed. Duplicates cannot be fixed automatically."
+      )
+      return 1
+
     if diffs:
       print(
         "The following inspections from the superset profile did not match "
@@ -162,6 +207,7 @@ def main(argv):
         "IntelliJ?):\n\n{0}\n\n".format('\n'.join(absent))
       )
 
+
     if diffs or absent:
       if opts.fix:
         print("Applying fixes automatically...")
@@ -174,6 +220,11 @@ def main(argv):
           return 1
         full_superset_profile_path = os.path.join(root, git_project,
                                                   superset_profile_path)
+        # Sort before writing out
+        inspections = superset_profile_root.find('profile[@version="1.0"]')
+        # Each element is an iterable of its children. Therefore we can sort it,
+        # and we need to do it in place, so slice assignment is crucial here.
+        inspections[:] = sorted(inspections, key=lambda t: t.get('class'))
         with open(full_superset_profile_path, 'wb') as f:
           f.write(etree.tostring(superset_profile_root))
         print("Fixes applied. In order to proceed with upload, please re-add "
