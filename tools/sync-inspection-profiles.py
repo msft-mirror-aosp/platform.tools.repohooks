@@ -24,8 +24,9 @@ import sys
 import traceback
 import copy
 
-from xml.etree import ElementTree as etree
 from collections import defaultdict
+
+import patched.ElementTree as etree
 
 # tools/repohooks isn't a package in Python sense, so need to patch PYTHONPATH
 # to include rh.* in order to be able to import useful utils from there.
