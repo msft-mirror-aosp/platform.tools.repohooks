@@ -355,6 +355,24 @@ def check_google_java_format(project, commit, _desc, _diff, options=None):
                       fixup_func=fixup_func)
 
 
+def check_commit_msg_buganizer_field(project, commit, desc, _diff, options=None):
+   """Check the commit message for a 'Bug:' or 'Fixes:' line."""
+   regex = r'^(?i)(bug|fixes):'
+   check_re = re.compile(regex)
+
+   if options.args():
+     raise ValueError('commit msg Buganizer line takes no options')
+
+   found = []
+   for line in desc.splitlines():
+     if check_re.match(line):
+       return
+
+   error = ('Commit message is missing a Buganizer line. It must match: %s') % (regex)
+   return [rh.results.HookResult('commit msg: buganizer: check', project,
+                                 commit, error=error)]
+
+
 def check_commit_msg_bug_field(project, commit, desc, _diff, options=None):
     """Check the commit message for a 'Bug:' line."""
     field = 'Bug'
@@ -576,6 +594,7 @@ BUILTIN_HOOKS = {
     'buildifier': check_buildifier,
     'checkpatch': check_checkpatch,
     'clang_format': check_clang_format,
+    'commit_msg_buganizer_field': check_commit_msg_buganizer_field,
     'commit_msg_bug_field': check_commit_msg_bug_field,
     'commit_msg_changeid_field': check_commit_msg_changeid_field,
     'commit_msg_test_field': check_commit_msg_test_field,

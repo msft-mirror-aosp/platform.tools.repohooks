@@ -144,6 +144,7 @@ canned hooks already included geared towards AOSP style guidelines.
 * `checkpatch`: Run commits through the Linux kernel's `checkpatch.pl` script.
 * `clang_format`: Run git-clang-format against the commit. The default style is
   `file`.
+* `commit_msg_buganizer_field`: Require a valid Bug: or Fixes: field.
 * `commit_msg_bug_field`: Require a valid `Bug:` line.
 * `commit_msg_changeid_field`: Require a valid `Change-Id:` Gerrit line.
 * `commit_msg_test_field`: Require a `Test:` line.
