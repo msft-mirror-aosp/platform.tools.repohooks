@@ -299,6 +299,28 @@ class BuiltinHooksTests(unittest.TestCase):
             self.project, 'commit', 'desc', (), options=self.options)
         self.assertEqual(ret, mock_check.return_value)
 
+    def test_commit_msg_buganizer_field(self, _mock_check, _mock_run):
+        """Verify the commit_msg_buganizer_field builtin hook."""
+        # Check some good messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_buganizer_field, True, (
+                'subj\n\nBug: N/A\n',
+                'subj\n\nbUG: 1234\n',
+                'subj\n\nfixes: 1234\n',
+                'subj\n\nFiXeS: 1234\n',
+            ))
+
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_buganizer_field, False, (
+                'subj',
+                'subj\n\nBug N/A\n',
+                'subj\n\nBug=1234\n',
+                'subj\n\nBUGANIZER: 1234\n',
+                'subj\n\nSolution: 1234\n',
+                'subj\n\nFixed: 1234\n',
+                'subj\n\nIssue: 1234\n',
+            ))
+
     def test_commit_msg_bug_field(self, _mock_check, _mock_run):
         """Verify the commit_msg_bug_field builtin hook."""
         # Check some good messages.
