@@ -288,7 +288,7 @@ def check_custom(project, commit, _desc, diff, options=None, **kwargs):
 
 def check_buildifier(project, commit, _desc, diff, options=None):
     """Checks that BUILD files are formatted with buildifier."""
-    filtered = _filter_diff(diff, [r'BUILD$', r'BUILD\.bazel$'])
+    filtered = _filter_diff(diff, [r'BUILD$', r'BUILD\.bazel$', r'\.bzl$'])
     if not filtered:
         return
 
@@ -300,8 +300,8 @@ def check_buildifier(project, commit, _desc, diff, options=None):
         paths = [os.path.join(project.dir, entry.file) for entry in filtered]
         error = (
             result.output +
-            "\nBUILD files need formatting." +
-            "\nTo reformat the BUILD files in this commit:" +
+            "\nBUILD or .bzl files need formatting." +
+            "\nTo reformat the BUILD or .bzl files in this commit:" +
             "\n\n" + buildifier + " " + " ".join(paths) +
             "\n\n"
         )
