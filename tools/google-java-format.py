@@ -50,6 +50,11 @@ def get_parser():
     # default to not sort imports, while letting callers override as desired.
     parser.add_argument('--sort-imports', action='store_true',
                         help='If true, imports will be sorted.')
+    # By default, all projects in repo prefer to use the AOSP style.
+    # Specifying this option will result in using the default google-java-format
+    # style.
+    parser.add_argument('--noaosp', action='store_true',
+                        help='Use google-java-format style instead of AOSP style.')
     return parser
 
 
@@ -109,7 +114,9 @@ def main(argv):
     diff_cmd = ['git', 'diff', '-U0', '%s^!' % opts.commit]
     diff = rh.utils.run_command(diff_cmd, capture_output=True).output
 
-    cmd = [opts.google_java_format_diff, '-p1', '--aosp']
+    cmd = [opts.google_java_format_diff, '-p1']
+    if not opts.noaosp:
+        cmd.extend(['--aosp'])
     if opts.fix:
         cmd.extend(['-i'])
     if not opts.sort_imports:
