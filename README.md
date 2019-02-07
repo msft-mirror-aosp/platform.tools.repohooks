@@ -107,7 +107,9 @@ Some variables are available to make it easier to handle OS differences.  These
 are automatically expanded for you:
 
 * `${REPO_ROOT}`: The absolute path of the root of the repo checkout.
-* `${BUILD_OS}`: The string `darwin-x86` for macOS and the string `linux-x86`
+* `${BUILD_OS}`: The string `darwin-x86` for macOS, `windows-x86y` on windows,
+                 the string `linux-x86` otherwise.
+* `${BUILD_OS_EXEC_EXTENSION}`: The string `.exe` on windows. Empty otherwise.
   for Linux/x86.
 
 ## [Options]

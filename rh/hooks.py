@@ -126,6 +126,10 @@ class Placeholders(object):
         """The build OS (see _get_build_os_name for details)."""
         return _get_build_os_name()
 
+    @property
+    def var_BUILD_OS_EXEC_EXTENSION(self):
+        """The build OS file extension (e.g: ".exe")"""
+        return _get_build_os_exec_extension()
 
 class HookOptions(object):
     """Holder class for hook options."""
@@ -245,9 +249,24 @@ def _get_build_os_name():
     system = platform.system()
     if 'Darwin' in system or 'Macintosh' in system:
         return 'darwin-x86'
-    else:
-        # TODO: Add more values if needed.
-        return 'linux-x86'
+
+    if 'Windows' in system:
+        return 'windows-x86'
+
+    # TODO: Add more values if needed.
+    return 'linux-x86'
+
+def _get_build_os_exec_extension():
+    """Gets the build OS executable file extension.
+
+    Returns:
+      A string representing the build OS executable file
+      extension (e.g: '.exe' on windows).
+    """
+    system = platform.system()
+    if 'Windows' in system:
+        return '.exe'
+    return ''
 
 
 def _fixup_func_caller(cmd, **kwargs):
