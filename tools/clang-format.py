@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import argparse
 import os
+import platform
 import sys
 
 _path = os.path.realpath(__file__ + '/../..')
@@ -78,6 +79,11 @@ def main(argv):
         cmd.extend(['%s^' % opts.commit, opts.commit])
     cmd.extend(['--'] + opts.files)
 
+    # We cannot call git-clang-format python script directly on Windows.
+    # Use the interpreter instead.
+    if platform.system() == 'Windows':
+      cmd = ['python.exe'] + cmd
+
     stdout = rh.utils.run_command(cmd, capture_output=True).output
     if stdout.rstrip('\n') == 'no modified files to format':
         # This is always printed when only files that clang-format does not
@@ -96,8 +102,12 @@ def main(argv):
             print('The following files have formatting errors:')
             for filename in diff_filenames:
                 print('\t%s' % filename)
-            print('You can run `%s --fix %s` to fix this' %
-                  (sys.argv[0], rh.shell.cmd_to_str(argv)))
+            if platform.system() == 'Windows':
+              print('You can run "python.exe \'%s\' --fix %s" to fix this'
+                % (sys.argv[0].replace("/", "\\"), rh.shell.cmd_to_str(argv).replace("/", "\\")))
+            else:
+              print('You can run `%s --fix %s` to fix this'
+                % (sys.argv[0], rh.shell.cmd_to_str(argv)))
             return 1
 
     return 0

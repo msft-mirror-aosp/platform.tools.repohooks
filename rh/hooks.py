@@ -345,8 +345,16 @@ def check_clang_format(project, commit, _desc, diff, options=None):
     tool_args = (['--clang-format', clang_format, '--git-clang-format',
                   git_clang_format] +
                  options.args(('--style', 'file', '--commit', commit), diff))
-    cmd = [tool] + tool_args
-    fixup_func = _fixup_func_caller([tool, '--fix'] + tool_args)
+
+    # To run the clang-format python script on windows, we cannot call it
+    # directly. Instead, we need to call the python interpreter.
+    if platform.system() == 'Windows':
+        run_tool = ['python.exe', tool]
+    else:
+        run_tool = [tool]
+    fixup_func = _fixup_func_caller(run_tool + ['--fix'] + tool_args)
+
+    cmd = run_tool + tool_args
     return _check_cmd('clang-format', project, commit, cmd,
                       fixup_func=fixup_func)
 
