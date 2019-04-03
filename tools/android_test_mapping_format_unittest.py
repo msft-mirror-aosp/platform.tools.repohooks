@@ -22,7 +22,7 @@ import unittest
 import android_test_mapping_format
 
 
-VALID_TEST_MAPPING = r"""
+VALID_TEST_MAPPING = """
 {
   "presubmit": [
     {
@@ -38,8 +38,7 @@ VALID_TEST_MAPPING = r"""
     {
       "name": "CtsWindowManagerDeviceTestCases",
       "host": true,
-      "preferred_targets": ["a", "b"],
-      "file_patterns": [".*\\.java"]
+      "preferred_targets": ["a", "b"]
     }
   ],
   "imports": [
@@ -138,17 +137,6 @@ BAD_IMPORT_WRONG_IMPORT_VALUE = """
 }
 """
 
-BAD_FILE_PATTERNS = """
-{
-  "presubmit": [
-    {
-      "name": "CtsWindowManagerDeviceTestCases",
-      "file_patterns": ["pattern", 123]
-    }
-  ]
-}
-"""
-
 
 class AndroidTestMappingFormatTests(unittest.TestCase):
     """Unittest for android_test_mapping_format module."""
@@ -230,15 +218,6 @@ class AndroidTestMappingFormatTests(unittest.TestCase):
         """Verify that import setting using wrong value can be detected."""
         with open(self.test_mapping_file, 'w') as f:
             f.write(BAD_IMPORT_WRONG_IMPORT_VALUE)
-        self.assertRaises(
-            android_test_mapping_format.InvalidTestMappingError,
-            android_test_mapping_format.process_file,
-            self.test_mapping_file)
-
-    def test_invalid_test_mapping_file_patterns_value(self):
-        """Verify that file_patterns using wrong value can be detected."""
-        with open(self.test_mapping_file, 'w') as f:
-            f.write(BAD_FILE_PATTERNS)
         self.assertRaises(
             android_test_mapping_format.InvalidTestMappingError,
             android_test_mapping_format.process_file,
