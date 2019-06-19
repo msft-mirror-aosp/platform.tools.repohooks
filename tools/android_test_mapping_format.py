@@ -23,8 +23,6 @@ The goal of this script is to validate the format of TEST_MAPPING files:
    import TEST_MAPPING files.
 """
 
-from __future__ import print_function
-
 import argparse
 import json
 import os
@@ -34,12 +32,6 @@ IMPORTS = 'imports'
 NAME = 'name'
 OPTIONS = 'options'
 PATH = 'path'
-HOST = 'host'
-PREFERRED_TARGETS = 'preferred_targets'
-FILE_PATTERNS = 'file_patterns'
-TEST_MAPPING_URL = (
-    'https://source.android.com/compatibility/tests/development/'
-    'test-mapping')
 
 
 class Error(Exception):
@@ -87,25 +79,6 @@ def _validate_test(test, test_mapping_file):
             'Invalid test config in test mapping file %s. test config must '
             'a `name` setting. Failed test config: %s' %
             (test_mapping_file, test))
-    if not isinstance(test.get(HOST, False), bool):
-        raise InvalidTestMappingError(
-            'Invalid test config in test mapping file %s. `host` setting in '
-            'test config can only have boolean value of `true` or `false`. '
-            'Failed test config: %s' % (test_mapping_file, test))
-    preferred_targets = test.get(PREFERRED_TARGETS, [])
-    if (not isinstance(preferred_targets, list) or
-            any(not isinstance(t, basestring) for t in preferred_targets)):
-        raise InvalidTestMappingError(
-            'Invalid test config in test mapping file %s. `preferred_targets` '
-            'setting in test config can only be a list of strings. Failed test '
-            'config: %s' % (test_mapping_file, test))
-    file_patterns = test.get(FILE_PATTERNS, [])
-    if (not isinstance(file_patterns, list) or
-            any(not isinstance(p, basestring) for p in file_patterns)):
-        raise InvalidTestMappingError(
-            'Invalid test config in test mapping file %s. `file_patterns` '
-            'setting in test config can only be a list of strings. Failed test '
-            'config: %s' % (test_mapping_file, test))
     for option in test.get(OPTIONS, []):
         if len(option) != 1:
             raise InvalidTestMappingError(
@@ -121,10 +94,8 @@ def _load_file(test_mapping_file):
             return json.load(file_obj)
     except ValueError as e:
         # The file is not a valid JSON file.
-        print(
-            'Failed to parse JSON file %s, error: %s' % (test_mapping_file, e),
-            file=sys.stderr)
-        raise
+        raise InvalidTestMappingError(
+            'Failed to parse JSON file %s, error: %s' % (test_mapping_file, e))
 
 
 def process_file(test_mapping_file):
@@ -151,13 +122,8 @@ def get_parser():
 def main(argv):
     parser = get_parser()
     opts = parser.parse_args(argv)
-    try:
-        for filename in opts.files:
-            process_file(os.path.join(opts.project_dir, filename))
-    except:
-        print('Visit %s for details about the format of TEST_MAPPING '
-              'file.' % TEST_MAPPING_URL, file=sys.stderr)
-        raise
+    for filename in opts.files:
+        process_file(os.path.join(opts.project_dir, filename))
 
 
 if __name__ == '__main__':
