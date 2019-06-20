@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 # -*- coding:utf-8 -*-
 # Copyright 2018 The Android Open Source Project
 #
@@ -22,7 +22,7 @@ import unittest
 import android_test_mapping_format
 
 
-VALID_TEST_MAPPING = """
+VALID_TEST_MAPPING = r"""
 {
   "presubmit": [
     {
@@ -36,7 +36,10 @@ VALID_TEST_MAPPING = """
   ],
   "postsubmit": [
     {
-      "name": "CtsWindowManagerDeviceTestCases"
+      "name": "CtsWindowManagerDeviceTestCases",
+      "host": true,
+      "preferred_targets": ["a", "b"],
+      "file_patterns": [".*\\.java"]
     }
   ],
   "imports": [
@@ -58,9 +61,43 @@ BAD_TEST_WRONG_KEY = """
 {
   "presubmit": [
     {
-      "bad_name": "CtsWindowManagerDeviceTestCases",
+      "bad_name": "CtsWindowManagerDeviceTestCases"
     }
-  ],
+  ]
+}
+"""
+
+BAD_TEST_WRONG_HOST_VALUE = """
+{
+  "presubmit": [
+    {
+      "name": "CtsWindowManagerDeviceTestCases",
+      "host": "bad_value"
+    }
+  ]
+}
+"""
+
+
+BAD_TEST_WRONG_PREFERRED_TARGETS_VALUE_NONE_LIST = """
+{
+  "presubmit": [
+    {
+      "name": "CtsWindowManagerDeviceTestCases",
+      "preferred_targets": "bad_value"
+    }
+  ]
+}
+"""
+
+BAD_TEST_WRONG_PREFERRED_TARGETS_VALUE_WRONG_TYPE = """
+{
+  "presubmit": [
+    {
+      "name": "CtsWindowManagerDeviceTestCases",
+      "preferred_targets": ["bad_value", 123]
+    }
+  ]
 }
 """
 
@@ -76,7 +113,7 @@ BAD_TEST_WRONG_OPTION = """
         }
       ]
     }
-  ],
+  ]
 }
 """
 
@@ -101,6 +138,17 @@ BAD_IMPORT_WRONG_IMPORT_VALUE = """
 }
 """
 
+BAD_FILE_PATTERNS = """
+{
+  "presubmit": [
+    {
+      "name": "CtsWindowManagerDeviceTestCases",
+      "file_patterns": ["pattern", 123]
+    }
+  ]
+}
+"""
+
 
 class AndroidTestMappingFormatTests(unittest.TestCase):
     """Unittest for android_test_mapping_format module."""
@@ -119,10 +167,42 @@ class AndroidTestMappingFormatTests(unittest.TestCase):
             f.write(VALID_TEST_MAPPING)
         android_test_mapping_format.process_file(self.test_mapping_file)
 
+    def test_invalid_test_mapping_bad_json(self):
+        """Verify that TEST_MAPPING file with bad json can be detected."""
+        with open(self.test_mapping_file, 'w') as f:
+            f.write(BAD_JSON)
+        self.assertRaises(
+            ValueError, android_test_mapping_format.process_file,
+            self.test_mapping_file)
+
     def test_invalid_test_mapping_wrong_test_key(self):
         """Verify that test config using wrong key can be detected."""
         with open(self.test_mapping_file, 'w') as f:
             f.write(BAD_TEST_WRONG_KEY)
+        self.assertRaises(
+            android_test_mapping_format.InvalidTestMappingError,
+            android_test_mapping_format.process_file,
+            self.test_mapping_file)
+
+    def test_invalid_test_mapping_wrong_test_value(self):
+        """Verify that test config using wrong host value can be detected."""
+        with open(self.test_mapping_file, 'w') as f:
+            f.write(BAD_TEST_WRONG_HOST_VALUE)
+        self.assertRaises(
+            android_test_mapping_format.InvalidTestMappingError,
+            android_test_mapping_format.process_file,
+            self.test_mapping_file)
+
+    def test_invalid_test_mapping_wrong_preferred_targets_value(self):
+        """Verify invalid preferred_targets are rejected."""
+        with open(self.test_mapping_file, 'w') as f:
+            f.write(BAD_TEST_WRONG_PREFERRED_TARGETS_VALUE_NONE_LIST)
+        self.assertRaises(
+            android_test_mapping_format.InvalidTestMappingError,
+            android_test_mapping_format.process_file,
+            self.test_mapping_file)
+        with open(self.test_mapping_file, 'w') as f:
+            f.write(BAD_TEST_WRONG_PREFERRED_TARGETS_VALUE_WRONG_TYPE)
         self.assertRaises(
             android_test_mapping_format.InvalidTestMappingError,
             android_test_mapping_format.process_file,
@@ -150,6 +230,15 @@ class AndroidTestMappingFormatTests(unittest.TestCase):
         """Verify that import setting using wrong value can be detected."""
         with open(self.test_mapping_file, 'w') as f:
             f.write(BAD_IMPORT_WRONG_IMPORT_VALUE)
+        self.assertRaises(
+            android_test_mapping_format.InvalidTestMappingError,
+            android_test_mapping_format.process_file,
+            self.test_mapping_file)
+
+    def test_invalid_test_mapping_file_patterns_value(self):
+        """Verify that file_patterns using wrong value can be detected."""
+        with open(self.test_mapping_file, 'w') as f:
+            f.write(BAD_FILE_PATTERNS)
         self.assertRaises(
             android_test_mapping_format.InvalidTestMappingError,
             android_test_mapping_format.process_file,
