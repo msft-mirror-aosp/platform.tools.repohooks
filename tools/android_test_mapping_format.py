@@ -28,6 +28,7 @@ from __future__ import print_function
 import argparse
 import json
 import os
+import re
 import sys
 
 IMPORTS = 'imports'
@@ -41,6 +42,16 @@ TEST_MAPPING_URL = (
     'https://source.android.com/compatibility/tests/development/'
     'test-mapping')
 
+# Pattern used to identify line-level '//'-format comment in TEST_MAPPING file.
+_COMMENTS_RE = re.compile(r'^\s*//')
+
+
+if sys.version_info.major < 3:
+    # pylint: disable=basestring-builtin,undefined-variable
+    string_types = basestring
+else:
+    string_types = str
+
 
 class Error(Exception):
     """Base exception for all custom exceptions in this module."""
@@ -48,6 +59,19 @@ class Error(Exception):
 
 class InvalidTestMappingError(Error):
     """Exception to raise when detecting an invalid TEST_MAPPING file."""
+
+
+def filter_comments(test_mapping_file):
+    """Remove '//'-format comments in TEST_MAPPING file to valid format.
+
+    Args:
+        test_mapping_file: Path to a TEST_MAPPING file.
+
+    Returns:
+        Valid json string without comments.
+    """
+    with open(test_mapping_file) as json_file:
+        return ''.join('\n' if _COMMENTS_RE.match(x) else x for x in json_file)
 
 
 def _validate_import(entry, test_mapping_file):
@@ -65,7 +89,7 @@ def _validate_import(entry, test_mapping_file):
             'Invalid import config in test mapping file %s. each import can '
             'only have one `path` setting. Failed entry: %s' %
             (test_mapping_file, entry))
-    if entry.keys()[0] != PATH:
+    if list(entry.keys())[0] != PATH:
         raise InvalidTestMappingError(
             'Invalid import config in test mapping file %s. import can only '
             'have one `path` setting. Failed entry: %s' %
@@ -94,14 +118,14 @@ def _validate_test(test, test_mapping_file):
             'Failed test config: %s' % (test_mapping_file, test))
     preferred_targets = test.get(PREFERRED_TARGETS, [])
     if (not isinstance(preferred_targets, list) or
-            any(not isinstance(t, basestring) for t in preferred_targets)):
+            any(not isinstance(t, string_types) for t in preferred_targets)):
         raise InvalidTestMappingError(
             'Invalid test config in test mapping file %s. `preferred_targets` '
             'setting in test config can only be a list of strings. Failed test '
             'config: %s' % (test_mapping_file, test))
     file_patterns = test.get(FILE_PATTERNS, [])
     if (not isinstance(file_patterns, list) or
-            any(not isinstance(p, basestring) for p in file_patterns)):
+            any(not isinstance(p, string_types) for p in file_patterns)):
         raise InvalidTestMappingError(
             'Invalid test config in test mapping file %s. `file_patterns` '
             'setting in test config can only be a list of strings. Failed test '
@@ -117,8 +141,7 @@ def _validate_test(test, test_mapping_file):
 def _load_file(test_mapping_file):
     """Load a TEST_MAPPING file as a json file."""
     try:
-        with open(test_mapping_file) as file_obj:
-            return json.load(file_obj)
+        return json.loads(filter_comments(test_mapping_file))
     except ValueError as e:
         # The file is not a valid JSON file.
         print(
