@@ -67,6 +67,7 @@ def main(argv):
 
     try:
         os.execvp(cmd[0], cmd)
+        return 0
     except OSError as e:
         if e.errno == errno.ENOENT:
             print('%s: unable to run `%s`: %s' % (__file__, cmd[0], e),
@@ -74,8 +75,8 @@ def main(argv):
             print('%s: Try installing pylint: sudo apt-get install %s' %
                   (__file__, os.path.basename(cmd[0])), file=sys.stderr)
             return 1
-        else:
-            raise
+
+        raise
 
 
 if __name__ == '__main__':
