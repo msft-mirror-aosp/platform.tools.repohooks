@@ -45,6 +45,7 @@ import rh.results
 import rh.config
 import rh.git
 import rh.hooks
+import rh.sixish
 import rh.terminal
 import rh.utils
 
@@ -190,7 +191,7 @@ def _get_project_config():
         # Load the config for this git repo.
         '.',
     )
-    return rh.config.PreSubmitConfig(paths=paths, global_paths=global_paths)
+    return rh.config.PreUploadConfig(paths=paths, global_paths=global_paths)
 
 
 def _attempt_fixes(fixup_func_list, commit_list):
@@ -263,7 +264,7 @@ def _run_project_hooks_in_cwd(project_name, proj_dir, output, commit_list=None):
 
     os.environ.update({
         'REPO_LREV': rh.git.get_commit_for_ref(upstream_branch),
-        'REPO_PATH': proj_dir,
+        'REPO_PATH': os.path.relpath(proj_dir, rh.git.find_repo_root()),
         'REPO_PROJECT': project_name,
         'REPO_REMOTE': remote,
         'REPO_RREV': rh.git.get_remote_revision(upstream_branch, remote),
@@ -283,7 +284,7 @@ def _run_project_hooks_in_cwd(project_name, proj_dir, output, commit_list=None):
         os.environ['PREUPLOAD_COMMIT'] = commit
         diff = rh.git.get_affected_files(commit)
         desc = rh.git.get_commit_desc(commit)
-        os.environ['PREUPLOAD_COMMIT_MESSAGE'] = desc
+        rh.sixish.setenv('PREUPLOAD_COMMIT_MESSAGE', desc)
 
         commit_summary = desc.split('\n', 1)[0]
         output.commit_start(commit=commit, commit_summary=commit_summary)
