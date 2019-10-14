@@ -106,6 +106,9 @@ class RunCommandErrorTests(unittest.TestCase):
     def test_eq(self):
         """Check object equality."""
         # Note: We explicitly do not use assertEqual here.
+        # We also explicitly compare to ourselves to make sure our __eq__ works.
+        # We also disable bad-option-value because this is a pylint3 warning.
+        # pylint: disable=bad-option-value,comparison-with-itself
         err1 = rh.utils.RunCommandError('msg', self.result)
         self.assertTrue(err1 == err1)
         err2 = rh.utils.RunCommandError('msg', self.result)
@@ -116,6 +119,9 @@ class RunCommandErrorTests(unittest.TestCase):
     def test_ne(self):
         """Check object inequality."""
         # Note: We explicitly do not use assertNotEqual here.
+        # We also explicitly compare to ourselves to make sure our __eq__ works.
+        # We also disable bad-option-value because this is a pylint3 warning.
+        # pylint: disable=bad-option-value,comparison-with-itself
         err1 = rh.utils.RunCommandError('msg', self.result)
         self.assertFalse(err1 != err1)
         err2 = rh.utils.RunCommandError('msg', self.result)
@@ -181,6 +187,26 @@ class RunCommandTests(unittest.TestCase):
         """Verify output capturing works."""
         ret = rh.utils.run_command(['echo', 'hi'], redirect_stdout=True)
         self.assertEqual('hi\n', ret.output)
+        self.assertIsNone(ret.error)
+
+    def test_stderr_capture(self):
+        """Verify stderr capturing works."""
+        ret = rh.utils.run_command(['sh', '-c', 'echo hi >&2'],
+                                   redirect_stderr=True)
+        self.assertIsNone(ret.output)
+        self.assertEqual('hi\n', ret.error)
+
+    def test_stdout_utf8(self):
+        """Verify reading UTF-8 data works."""
+        ret = rh.utils.run_command(['printf', r'\xc3\x9f'],
+                                   redirect_stdout=True)
+        self.assertEqual(u'ß', ret.output)
+        self.assertIsNone(ret.error)
+
+    def test_stdin_utf8(self):
+        """Verify writing UTF-8 data works."""
+        ret = rh.utils.run_command(['cat'], redirect_stdout=True, input=u'ß')
+        self.assertEqual(u'ß', ret.output)
         self.assertIsNone(ret.error)
 
 
