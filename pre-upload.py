@@ -26,12 +26,19 @@ import argparse
 import os
 import sys
 
-try:
-    __file__
-except NameError:
-    # Work around repo until it gets fixed.
-    # https://gerrit-review.googlesource.com/75481
-    __file__ = os.path.join(os.getcwd(), 'pre-upload.py')
+
+# Assert some minimum Python versions as we don't test or support any others.
+# We only support Python 2.7, and require 2.7.5+/3.4+ to include signal fix:
+# https://bugs.python.org/issue14173
+if sys.version_info < (2, 7, 5):
+    print('repohooks: error: Python-2.7.5+ is required', file=sys.stderr)
+    sys.exit(1)
+elif sys.version_info.major == 3 and sys.version_info < (3, 4):
+    # We don't actually test <Python-3.6.  Hope for the best!
+    print('repohooks: error: Python-3.4+ is required', file=sys.stderr)
+    sys.exit(1)
+
+
 _path = os.path.dirname(os.path.realpath(__file__))
 if sys.path[0] != _path:
     sys.path.insert(0, _path)
@@ -45,6 +52,7 @@ import rh.results
 import rh.config
 import rh.git
 import rh.hooks
+import rh.sixish
 import rh.terminal
 import rh.utils
 
@@ -190,7 +198,7 @@ def _get_project_config():
         # Load the config for this git repo.
         '.',
     )
-    return rh.config.PreSubmitConfig(paths=paths, global_paths=global_paths)
+    return rh.config.PreUploadConfig(paths=paths, global_paths=global_paths)
 
 
 def _attempt_fixes(fixup_func_list, commit_list):
@@ -263,7 +271,7 @@ def _run_project_hooks_in_cwd(project_name, proj_dir, output, commit_list=None):
 
     os.environ.update({
         'REPO_LREV': rh.git.get_commit_for_ref(upstream_branch),
-        'REPO_PATH': proj_dir,
+        'REPO_PATH': os.path.relpath(proj_dir, rh.git.find_repo_root()),
         'REPO_PROJECT': project_name,
         'REPO_REMOTE': remote,
         'REPO_RREV': rh.git.get_remote_revision(upstream_branch, remote),
@@ -283,7 +291,7 @@ def _run_project_hooks_in_cwd(project_name, proj_dir, output, commit_list=None):
         os.environ['PREUPLOAD_COMMIT'] = commit
         diff = rh.git.get_affected_files(commit)
         desc = rh.git.get_commit_desc(commit)
-        os.environ['PREUPLOAD_COMMIT_MESSAGE'] = desc
+        rh.sixish.setenv('PREUPLOAD_COMMIT_MESSAGE', desc)
 
         commit_summary = desc.split('\n', 1)[0]
         output.commit_start(commit=commit, commit_summary=commit_summary)
