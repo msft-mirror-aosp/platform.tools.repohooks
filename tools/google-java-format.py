@@ -116,7 +116,7 @@ def main(argv):
     # https://github.com/google/google-java-format/issues/107
     diff_cmd = ['git', 'diff', '--no-ext-diff', '-U0', '%s^!' % opts.commit]
     diff_cmd.extend(['--'] + opts.files)
-    diff = rh.utils.run_command(diff_cmd, capture_output=True).output
+    diff = rh.utils.run(diff_cmd, capture_output=True).stdout
 
     cmd = [opts.google_java_format_diff, '-p1']
     if not opts.noaosp:
@@ -130,10 +130,8 @@ def main(argv):
     # Note this assumes "python" is in the path
     if platform.system() == 'Windows':
         cmd = ['python.exe'] + cmd
-    stdout = rh.utils.run_command(cmd,
-                                  input=diff,
-                                  capture_output=True,
-                                  extra_env=extra_env).output
+    stdout = rh.utils.run(cmd, input=diff, capture_output=True,
+                          extra_env=extra_env).stdout
     if stdout:
         print('One or more files in your commit have Java formatting errors.')
         if platform.system() == 'Windows':
