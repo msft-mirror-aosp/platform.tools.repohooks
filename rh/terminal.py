@@ -142,12 +142,11 @@ def print_status_line(line, print_newline=False):
 def get_input(prompt):
     """Python 2/3 glue for raw_input/input differences."""
     try:
-        # pylint: disable=raw_input-builtin
         return raw_input(prompt)
     except NameError:
         # Python 3 renamed raw_input() to input(), which is safe to call since
         # it does not evaluate the input.
-        # pylint: disable=bad-builtin,input-builtin
+        # pylint: disable=bad-builtin
         return input(prompt)
 
 
