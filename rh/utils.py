@@ -37,6 +37,23 @@ import rh.signals
 from rh.sixish import string_types
 
 
+def timedelta_str(delta):
+    """A less noisy timedelta.__str__.
+
+    The default timedelta stringification contains a lot of leading zeros and
+    uses microsecond resolution.  This makes for noisy output.
+    """
+    total = delta.total_seconds()
+    hours, rem = divmod(total, 3600)
+    mins, secs = divmod(rem, 60)
+    ret = '%i.%03is' % (secs, delta.microseconds // 1000)
+    if mins:
+        ret = '%im%s' % (mins, ret)
+    if hours:
+        ret = '%ih%s' % (hours, ret)
+    return ret
+
+
 class CommandResult(object):
     """An object to store various attributes of a child process."""
 
@@ -89,13 +106,6 @@ class RunCommandError(Exception):
     def __str__(self):
         return self.stringify()
 
-    def __eq__(self, other):
-        return (isinstance(other, type(self)) and
-                self.args == other.args)
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
 
 class TerminateRunCommandError(RunCommandError):
     """We were signaled to shutdown while running a command.
@@ -105,7 +115,7 @@ class TerminateRunCommandError(RunCommandError):
     """
 
 
-def sudo_run_command(cmd, user='root', **kwargs):
+def sudo_run(cmd, user='root', **kwargs):
     """Run a command via sudo.
 
     Client code must use this rather than coming up with their own RunCommand
@@ -136,7 +146,7 @@ def sudo_run_command(cmd, user='root', **kwargs):
     sudo_cmd = ['sudo']
 
     if user == 'root' and os.geteuid() == 0:
-        return run_command(cmd, **kwargs)
+        return run(cmd, **kwargs)
 
     if user != 'root':
         sudo_cmd += ['-u', user]
@@ -153,7 +163,7 @@ def sudo_run_command(cmd, user='root', **kwargs):
 
     sudo_cmd.extend(cmd)
 
-    return run_command(sudo_cmd, **kwargs)
+    return run(sudo_cmd, **kwargs)
 
 
 def _kill_child_process(proc, int_timeout, kill_timeout, cmd, original_handler,
@@ -230,10 +240,10 @@ class _Popen(subprocess.Popen):
             if e.errno == errno.EPERM:
                 # Kill returns either 0 (signal delivered), or 1 (signal wasn't
                 # delivered).  This isn't particularly informative, but we still
-                # need that info to decide what to do, thus error_code_ok=True.
-                ret = sudo_run_command(['kill', '-%i' % signum, str(self.pid)],
-                                       redirect_stdout=True,
-                                       redirect_stderr=True, error_code_ok=True)
+                # need that info to decide what to do, thus check=False.
+                ret = sudo_run(['kill', '-%i' % signum, str(self.pid)],
+                               redirect_stdout=True,
+                               redirect_stderr=True, check=False)
                 if ret.returncode == 1:
                     # The kill binary doesn't distinguish between permission
                     # denied and the pid is missing.  Denied can only occur
@@ -251,21 +261,18 @@ class _Popen(subprocess.Popen):
                 raise
 
 
-# pylint: disable=redefined-builtin
-def run_command(cmd, error_message=None, redirect_stdout=False,
-                redirect_stderr=False, cwd=None, input=None,
-                shell=False, env=None, extra_env=None, ignore_sigint=False,
-                combine_stdout_stderr=False, log_stdout_to_file=None,
-                error_code_ok=False, int_timeout=1, kill_timeout=1,
-                stdout_to_pipe=False, capture_output=False,
-                quiet=False, close_fds=True):
+# We use the keyword arg |input| which trips up pylint checks.
+# pylint: disable=redefined-builtin,input-builtin
+def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
+        shell=False, env=None, extra_env=None, combine_stdout_stderr=False,
+        check=True, int_timeout=1, kill_timeout=1, capture_output=False,
+        close_fds=True):
     """Runs a command.
 
     Args:
       cmd: cmd to run.  Should be input to subprocess.Popen.  If a string, shell
           must be true.  Otherwise the command must be an array of arguments,
           and shell must be false.
-      error_message: Prints out this message when an error occurs.
       redirect_stdout: Returns the stdout.
       redirect_stderr: Holds stderr output until input is communicated.
       cwd: The working directory to run this cmd.
@@ -276,37 +283,25 @@ def run_command(cmd, error_message=None, redirect_stdout=False,
       env: If non-None, this is the environment for the new process.
       extra_env: If set, this is added to the environment for the new process.
           This dictionary is not used to clear any entries though.
-      ignore_sigint: If True, we'll ignore signal.SIGINT before calling the
-          child.  This is the desired behavior if we know our child will handle
-          Ctrl-C.  If we don't do this, I think we and the child will both get
-          Ctrl-C at the same time, which means we'll forcefully kill the child.
       combine_stdout_stderr: Combines stdout and stderr streams into stdout.
-      log_stdout_to_file: If set, redirects stdout to file specified by this
-          path.  If |combine_stdout_stderr| is set to True, then stderr will
-          also be logged to the specified file.
-      error_code_ok: Does not raise an exception when command returns a non-zero
-          exit code.  Instead, returns the CommandResult object containing the
-          exit code.
+      check: Whether to raise an exception when command returns a non-zero exit
+          code, or return the CommandResult object containing the exit code.
+          Note: will still raise an exception if the cmd file does not exist.
       int_timeout: If we're interrupted, how long (in seconds) should we give
           the invoked process to clean up before we send a SIGTERM.
       kill_timeout: If we're interrupted, how long (in seconds) should we give
           the invoked process to shutdown from a SIGTERM before we SIGKILL it.
-      stdout_to_pipe: Redirect stdout to pipe.
       capture_output: Set |redirect_stdout| and |redirect_stderr| to True.
-      quiet: Set |stdout_to_pipe| and |combine_stdout_stderr| to True.
       close_fds: Whether to close all fds before running |cmd|.
 
     Returns:
       A CommandResult object.
 
     Raises:
-      RunCommandError: Raises exception on error with optional error_message.
+      RunCommandError: Raises exception on error.
     """
     if capture_output:
         redirect_stdout, redirect_stderr = True, True
-
-    if quiet:
-        stdout_to_pipe, combine_stdout_stderr = True, True
 
     # Set default for variables.
     stdout = None
@@ -342,11 +337,7 @@ def run_command(cmd, error_message=None, redirect_stdout=False,
     # view of the file.
     # The Popen API accepts either an int or a file handle for stdout/stderr.
     # pylint: disable=redefined-variable-type
-    if log_stdout_to_file:
-        stdout = open(log_stdout_to_file, 'w+')
-    elif stdout_to_pipe:
-        stdout = subprocess.PIPE
-    elif redirect_stdout:
+    if redirect_stdout:
         stdout = _get_tempfile()
 
     if combine_stdout_stderr:
@@ -365,6 +356,7 @@ def run_command(cmd, error_message=None, redirect_stdout=False,
     # Otherwise we assume it's a file object that can be read from directly.
     if isinstance(input, string_types):
         stdin = subprocess.PIPE
+        input = input.encode('utf-8')
     elif input is not None:
         stdin = input
         input = None
@@ -385,38 +377,28 @@ def run_command(cmd, error_message=None, redirect_stdout=False,
     cmd_result.cmd = cmd
 
     proc = None
-    # Verify that the signals modules is actually usable, and won't segfault
-    # upon invocation of getsignal.  See signals.SignalModuleUsable for the
-    # details and upstream python bug.
-    use_signals = rh.signals.signal_module_usable()
     try:
         proc = _Popen(cmd, cwd=cwd, stdin=stdin, stdout=stdout,
                       stderr=stderr, shell=False, env=env,
                       close_fds=close_fds)
 
-        if use_signals:
-            old_sigint = signal.getsignal(signal.SIGINT)
-            if ignore_sigint:
-                handler = signal.SIG_IGN
-            else:
-                handler = functools.partial(
-                    _kill_child_process, proc, int_timeout, kill_timeout, cmd,
-                    old_sigint)
-            signal.signal(signal.SIGINT, handler)
+        old_sigint = signal.getsignal(signal.SIGINT)
+        handler = functools.partial(_kill_child_process, proc, int_timeout,
+                                    kill_timeout, cmd, old_sigint)
+        signal.signal(signal.SIGINT, handler)
 
-            old_sigterm = signal.getsignal(signal.SIGTERM)
-            handler = functools.partial(_kill_child_process, proc, int_timeout,
-                                        kill_timeout, cmd, old_sigterm)
-            signal.signal(signal.SIGTERM, handler)
+        old_sigterm = signal.getsignal(signal.SIGTERM)
+        handler = functools.partial(_kill_child_process, proc, int_timeout,
+                                    kill_timeout, cmd, old_sigterm)
+        signal.signal(signal.SIGTERM, handler)
 
         try:
             (cmd_result.output, cmd_result.error) = proc.communicate(input)
         finally:
-            if use_signals:
-                signal.signal(signal.SIGINT, old_sigint)
-                signal.signal(signal.SIGTERM, old_sigterm)
+            signal.signal(signal.SIGINT, old_sigint)
+            signal.signal(signal.SIGTERM, old_sigterm)
 
-            if stdout and not log_stdout_to_file and not stdout_to_pipe:
+            if stdout:
                 # The linter is confused by how stdout is a file & an int.
                 # pylint: disable=maybe-no-member,no-member
                 stdout.seek(0)
@@ -432,24 +414,24 @@ def run_command(cmd, error_message=None, redirect_stdout=False,
 
         cmd_result.returncode = proc.returncode
 
-        if not error_code_ok and proc.returncode:
+        if check and proc.returncode:
             msg = 'cwd=%s' % cwd
             if extra_env:
                 msg += ', extra env=%s' % extra_env
-            if error_message:
-                msg += '\n%s' % error_message
             raise RunCommandError(msg, cmd_result)
     except OSError as e:
         estr = str(e)
         if e.errno == errno.EACCES:
             estr += '; does the program need `chmod a+x`?'
-        if error_code_ok:
+        if not check:
             cmd_result = CommandResult(cmd=cmd, error=estr, returncode=255)
         else:
             raise RunCommandError(estr, CommandResult(cmd=cmd), exception=e)
     finally:
         if proc is not None:
             # Ensure the process is dead.
+            # Some pylint3 versions are confused here.
+            # pylint: disable=too-many-function-args
             _kill_child_process(proc, int_timeout, kill_timeout, cmd, None,
                                 None, None)
 
@@ -460,4 +442,4 @@ def run_command(cmd, error_message=None, redirect_stdout=False,
         cmd_result.error = cmd_result.error.decode('utf-8', 'replace')
 
     return cmd_result
-# pylint: enable=redefined-builtin
+# pylint: enable=redefined-builtin,input-builtin

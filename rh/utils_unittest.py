@@ -18,6 +18,7 @@
 
 from __future__ import print_function
 
+import datetime
 import os
 import sys
 import unittest
@@ -33,6 +34,35 @@ del _path
 import rh
 import rh.utils
 from rh.sixish import mock
+
+
+class TimeDeltaStrTests(unittest.TestCase):
+    """Verify behavior of timedelta_str object."""
+
+    def test_same(self):
+        """Check timedelta of 0 seconds."""
+        delta = datetime.timedelta(0)
+        self.assertEqual('0.000s', rh.utils.timedelta_str(delta))
+
+    def test_millisecondss(self):
+        """Check timedelta of milliseconds."""
+        delta = datetime.timedelta(seconds=0.123456)
+        self.assertEqual('0.123s', rh.utils.timedelta_str(delta))
+
+    def test_seconds(self):
+        """Check timedelta of seconds."""
+        delta = datetime.timedelta(seconds=12.3)
+        self.assertEqual('12.300s', rh.utils.timedelta_str(delta))
+
+    def test_minutes(self):
+        """Check timedelta of minutes."""
+        delta = datetime.timedelta(seconds=72.3)
+        self.assertEqual('1m12.300s', rh.utils.timedelta_str(delta))
+
+    def test_hours(self):
+        """Check timedelta of hours."""
+        delta = datetime.timedelta(seconds=4000.3)
+        self.assertEqual('1h6m40.300s', rh.utils.timedelta_str(delta))
 
 
 class CommandResultTests(unittest.TestCase):
@@ -103,58 +133,38 @@ class RunCommandErrorTests(unittest.TestCase):
                                        exception=Exception('bad'))
         self.assertNotEqual('', repr(err))
 
-    def test_eq(self):
-        """Check object equality."""
-        # Note: We explicitly do not use assertEqual here.
-        err1 = rh.utils.RunCommandError('msg', self.result)
-        self.assertTrue(err1 == err1)
-        err2 = rh.utils.RunCommandError('msg', self.result)
-        self.assertTrue(err1 == err2)
-        err3 = rh.utils.RunCommandError('foo', self.result)
-        self.assertFalse(err1 == err3)
-
-    def test_ne(self):
-        """Check object inequality."""
-        # Note: We explicitly do not use assertNotEqual here.
-        err1 = rh.utils.RunCommandError('msg', self.result)
-        self.assertFalse(err1 != err1)
-        err2 = rh.utils.RunCommandError('msg', self.result)
-        self.assertFalse(err1 != err2)
-        err3 = rh.utils.RunCommandError('foo', self.result)
-        self.assertTrue(err1 != err3)
-
 
 # We shouldn't require sudo to run unittests :).
-@mock.patch.object(rh.utils, 'run_command')
+@mock.patch.object(rh.utils, 'run')
 @mock.patch.object(os, 'geteuid', return_value=1000)
 class SudoRunCommandTests(unittest.TestCase):
-    """Verify behavior of sudo_run_command helper."""
+    """Verify behavior of sudo_run helper."""
 
     def test_run_as_root_as_root(self, mock_geteuid, mock_run):
         """Check behavior when we're already root."""
         mock_geteuid.return_value = 0
-        ret = rh.utils.sudo_run_command(['ls'], user='root')
+        ret = rh.utils.sudo_run(['ls'], user='root')
         self.assertIsNotNone(ret)
         args, _kwargs = mock_run.call_args
         self.assertEqual((['ls'],), args)
 
     def test_run_as_root_as_nonroot(self, _mock_geteuid, mock_run):
         """Check behavior when we're not already root."""
-        ret = rh.utils.sudo_run_command(['ls'], user='root')
+        ret = rh.utils.sudo_run(['ls'], user='root')
         self.assertIsNotNone(ret)
         args, _kwargs = mock_run.call_args
         self.assertEqual((['sudo', '--', 'ls'],), args)
 
     def test_run_as_nonroot_as_nonroot(self, _mock_geteuid, mock_run):
         """Check behavior when we're not already root."""
-        ret = rh.utils.sudo_run_command(['ls'], user='nobody')
+        ret = rh.utils.sudo_run(['ls'], user='nobody')
         self.assertIsNotNone(ret)
         args, _kwargs = mock_run.call_args
         self.assertEqual((['sudo', '-u', 'nobody', '--', 'ls'],), args)
 
     def test_env(self, _mock_geteuid, mock_run):
         """Check passing through env vars."""
-        ret = rh.utils.sudo_run_command(['ls'], extra_env={'FOO': 'bar'})
+        ret = rh.utils.sudo_run(['ls'], extra_env={'FOO': 'bar'})
         self.assertIsNotNone(ret)
         args, _kwargs = mock_run.call_args
         self.assertEqual((['sudo', 'FOO=bar', '--', 'ls'],), args)
@@ -162,25 +172,43 @@ class SudoRunCommandTests(unittest.TestCase):
     def test_shell(self, _mock_geteuid, _mock_run):
         """Check attempts to use shell code are rejected."""
         with self.assertRaises(AssertionError):
-            rh.utils.sudo_run_command('foo')
+            rh.utils.sudo_run('foo')
         with self.assertRaises(AssertionError):
-            rh.utils.sudo_run_command(['ls'], shell=True)
+            rh.utils.sudo_run(['ls'], shell=True)
 
 
 class RunCommandTests(unittest.TestCase):
-    """Verify behavior of run_command helper."""
+    """Verify behavior of run helper."""
 
     def test_basic(self):
         """Simple basic test."""
-        ret = rh.utils.run_command(['true'])
+        ret = rh.utils.run(['true'])
         self.assertEqual('true', ret.cmdstr)
         self.assertIsNone(ret.output)
         self.assertIsNone(ret.error)
 
     def test_stdout_capture(self):
         """Verify output capturing works."""
-        ret = rh.utils.run_command(['echo', 'hi'], redirect_stdout=True)
+        ret = rh.utils.run(['echo', 'hi'], redirect_stdout=True)
         self.assertEqual('hi\n', ret.output)
+        self.assertIsNone(ret.error)
+
+    def test_stderr_capture(self):
+        """Verify stderr capturing works."""
+        ret = rh.utils.run(['sh', '-c', 'echo hi >&2'], redirect_stderr=True)
+        self.assertIsNone(ret.output)
+        self.assertEqual('hi\n', ret.error)
+
+    def test_stdout_utf8(self):
+        """Verify reading UTF-8 data works."""
+        ret = rh.utils.run(['printf', r'\xc3\x9f'], redirect_stdout=True)
+        self.assertEqual(u'ß', ret.output)
+        self.assertIsNone(ret.error)
+
+    def test_stdin_utf8(self):
+        """Verify writing UTF-8 data works."""
+        ret = rh.utils.run(['cat'], redirect_stdout=True, input=u'ß')
+        self.assertEqual(u'ß', ret.output)
         self.assertIsNone(ret.error)
 
 
