@@ -31,9 +31,10 @@ del _path
 # relative imports because this is an executable program, not a module.
 # pylint: disable=wrong-import-position
 import rh
-import rh.hooks
 import rh.config
+import rh.hooks
 from rh.sixish import mock
+from rh.sixish import string_types
 
 
 class HooksDocsTests(unittest.TestCase):
@@ -212,10 +213,10 @@ class UtilsTests(unittest.TestCase):
     """Verify misc utility functions."""
 
     def testRunCommand(self):
-        """Check _run_command behavior."""
+        """Check _run behavior."""
         # Most testing is done against the utils.RunCommand already.
         # pylint: disable=protected-access
-        ret = rh.hooks._run_command(['true'])
+        ret = rh.hooks._run(['true'])
         self.assertEqual(ret.returncode, 0)
 
     def testBuildOs(self):
@@ -223,19 +224,19 @@ class UtilsTests(unittest.TestCase):
         # Just verify it returns something and doesn't crash.
         # pylint: disable=protected-access
         ret = rh.hooks._get_build_os_name()
-        self.assertTrue(isinstance(ret, str))
+        self.assertTrue(isinstance(ret, string_types))
         self.assertNotEqual(ret, '')
 
     def testGetHelperPath(self):
         """Check get_helper_path behavior."""
         # Just verify it doesn't crash.  It's a dirt simple func.
         ret = rh.hooks.get_helper_path('booga')
-        self.assertTrue(isinstance(ret, str))
+        self.assertTrue(isinstance(ret, string_types))
         self.assertNotEqual(ret, '')
 
 
 
-@mock.patch.object(rh.utils, 'run_command')
+@mock.patch.object(rh.utils, 'run')
 @mock.patch.object(rh.hooks, '_check_cmd', return_value=['check_cmd'])
 class BuiltinHooksTests(unittest.TestCase):
     """Verify the builtin hooks."""
@@ -338,6 +339,8 @@ class BuiltinHooksTests(unittest.TestCase):
                 'subj',
                 'subj\n\nBUG=1234\n',
                 'subj\n\nBUG: 1234\n',
+                'subj\n\nBug: N/A\n',
+                'subj\n\nBug:\n',
             ))
 
     def test_commit_msg_changeid_field(self, _mock_check, _mock_run):

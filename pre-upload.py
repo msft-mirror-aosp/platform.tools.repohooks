@@ -23,15 +23,23 @@ when developing.
 from __future__ import print_function
 
 import argparse
+import datetime
 import os
 import sys
 
-try:
-    __file__
-except NameError:
-    # Work around repo until it gets fixed.
-    # https://gerrit-review.googlesource.com/75481
-    __file__ = os.path.join(os.getcwd(), 'pre-upload.py')
+
+# Assert some minimum Python versions as we don't test or support any others.
+# We only support Python 2.7, and require 2.7.5+/3.4+ to include signal fix:
+# https://bugs.python.org/issue14173
+if sys.version_info < (2, 7, 5):
+    print('repohooks: error: Python-2.7.5+ is required', file=sys.stderr)
+    sys.exit(1)
+elif sys.version_info.major == 3 and sys.version_info < (3, 4):
+    # We don't actually test <Python-3.6.  Hope for the best!
+    print('repohooks: error: Python-3.4+ is required', file=sys.stderr)
+    sys.exit(1)
+
+
 _path = os.path.dirname(os.path.realpath(__file__))
 if sys.path[0] != _path:
     sys.path.insert(0, _path)
@@ -45,6 +53,7 @@ import rh.results
 import rh.config
 import rh.git
 import rh.hooks
+import rh.sixish
 import rh.terminal
 import rh.utils
 
@@ -73,6 +82,7 @@ class Output(object):
         self.num_hooks = None
         self.hook_index = 0
         self.success = True
+        self.start_time = datetime.datetime.now()
 
     def set_num_hooks(self, num_hooks):
         """Keep track of how many hooks we'll be running.
@@ -138,10 +148,11 @@ class Output(object):
 
     def finish(self):
         """Print summary for all the hooks."""
-        status_line = '[%s] repohooks for %s %s' % (
+        status_line = '[%s] repohooks for %s %s in %s' % (
             self.PASSED if self.success else self.FAILED,
             self.project_name,
-            'passed' if self.success else 'failed')
+            'passed' if self.success else 'failed',
+            rh.utils.timedelta_str(datetime.datetime.now() - self.start_time))
         rh.terminal.print_status_line(status_line, print_newline=True)
 
 
@@ -190,7 +201,7 @@ def _get_project_config():
         # Load the config for this git repo.
         '.',
     )
-    return rh.config.PreSubmitConfig(paths=paths, global_paths=global_paths)
+    return rh.config.PreUploadConfig(paths=paths, global_paths=global_paths)
 
 
 def _attempt_fixes(fixup_func_list, commit_list):
@@ -255,7 +266,7 @@ def _run_project_hooks_in_cwd(project_name, proj_dir, output, commit_list=None):
     try:
         remote = rh.git.get_upstream_remote()
         upstream_branch = rh.git.get_upstream_branch()
-    except rh.utils.RunCommandError as e:
+    except rh.utils.CalledProcessError as e:
         output.error('Upstream remote/tracking branch lookup',
                      '%s\nDid you run repo start?  Is your HEAD detached?' %
                      (e,))
@@ -263,7 +274,7 @@ def _run_project_hooks_in_cwd(project_name, proj_dir, output, commit_list=None):
 
     os.environ.update({
         'REPO_LREV': rh.git.get_commit_for_ref(upstream_branch),
-        'REPO_PATH': proj_dir,
+        'REPO_PATH': os.path.relpath(proj_dir, rh.git.find_repo_root()),
         'REPO_PROJECT': project_name,
         'REPO_REMOTE': remote,
         'REPO_RREV': rh.git.get_remote_revision(upstream_branch, remote),
@@ -283,7 +294,7 @@ def _run_project_hooks_in_cwd(project_name, proj_dir, output, commit_list=None):
         os.environ['PREUPLOAD_COMMIT'] = commit
         diff = rh.git.get_affected_files(commit)
         desc = rh.git.get_commit_desc(commit)
-        os.environ['PREUPLOAD_COMMIT_MESSAGE'] = desc
+        rh.sixish.setenv('PREUPLOAD_COMMIT_MESSAGE', desc)
 
         commit_summary = desc.split('\n', 1)[0]
         output.commit_start(commit=commit, commit_summary=commit_summary)
@@ -327,8 +338,8 @@ def _run_project_hooks(project_name, proj_dir=None, commit_list=None):
 
     if proj_dir is None:
         cmd = ['repo', 'forall', project_name, '-c', 'pwd']
-        result = rh.utils.run_command(cmd, capture_output=True)
-        proj_dirs = result.output.split()
+        result = rh.utils.run(cmd, capture_output=True)
+        proj_dirs = result.stdout.split()
         if not proj_dirs:
             print('%s cannot be found.' % project_name, file=sys.stderr)
             print('Please specify a valid project.', file=sys.stderr)
@@ -396,8 +407,8 @@ def _identify_project(path):
       a blank string upon failure.
     """
     cmd = ['repo', 'forall', '.', '-c', 'echo ${REPO_PROJECT}']
-    return rh.utils.run_command(cmd, capture_output=True, redirect_stderr=True,
-                                cwd=path).output.strip()
+    return rh.utils.run(cmd, capture_output=True, redirect_stderr=True,
+                        cwd=path).stdout.strip()
 
 
 def direct_main(argv):
@@ -429,8 +440,8 @@ def direct_main(argv):
     # project from CWD.
     if opts.dir is None:
         cmd = ['git', 'rev-parse', '--git-dir']
-        git_dir = rh.utils.run_command(cmd, capture_output=True,
-                                       redirect_stderr=True).output.strip()
+        git_dir = rh.utils.run(cmd, capture_output=True,
+                               redirect_stderr=True).stdout.strip()
         if not git_dir:
             parser.error('The current directory is not part of a git project.')
         opts.dir = os.path.dirname(os.path.abspath(git_dir))
