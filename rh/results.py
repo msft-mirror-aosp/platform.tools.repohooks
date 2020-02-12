@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Common errors thrown when repo presubmit checks fail."""
+"""Common errors thrown when repo preupload checks fail."""
 
 from __future__ import print_function
 
@@ -54,9 +54,13 @@ class HookResult(object):
     def __bool__(self):
         return bool(self.error)
 
+    # pylint: disable=nonzero-method
     def __nonzero__(self):
         """Python 2/3 glue."""
         return self.__bool__()
+
+    def is_warning(self):
+        return False
 
 
 class HookCommandResult(HookResult):
@@ -71,3 +75,6 @@ class HookCommandResult(HookResult):
 
     def __bool__(self):
         return self.result.returncode not in (None, 0)
+
+    def is_warning(self):
+        return self.result.returncode == 77

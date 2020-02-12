@@ -1,4 +1,4 @@
-# AOSP Presubmit Hooks
+# AOSP Preupload Hooks
 
 [TOC]
 
@@ -49,12 +49,15 @@ settings on top.
 
 ## PREUPLOAD.cfg
 
-This file are checked in the top of a specific git repository.  Stacking them
+This file is checked in the top of a specific git repository.  Stacking them
 in subdirectories (to try and override parent settings) is not supported.
 
 ## Example
 
 ```
+# Per-project `repo upload` hook settings.
+# https://android.googlesource.com/platform/tools/repohooks
+
 [Options]
 ignore_merged_commits = true
 
@@ -128,13 +131,20 @@ The key can be any name (as long as the syntax is valid), as can the program
 that is executed. The key is used as the name of the hook for reporting purposes,
 so it should be at least somewhat descriptive.
 
+Whitespace in the key name is OK!
+
+The keys must be unique as duplicates will silently clobber earlier values.
+
+You do not need to send stderr to stdout.  The tooling will take care of
+merging them together for you automatically.
+
 ```
 [Hook Scripts]
-my_first_hook = program --gogog ${PREUPLOAD_FILES}
-another_hook = funtimes --i-need "some space" ${PREUPLOAD_FILES}
-some_fish = linter --ate-a-cat ${PREUPLOAD_FILES}
-some_cat = formatter --cat-commit ${PREUPLOAD_COMMIT}
-some_dog = tool --no-cat-in-commit-message ${PREUPLOAD_COMMIT_MESSAGE}
+my first hook = program --gogog ${PREUPLOAD_FILES}
+another hook = funtimes --i-need "some space" ${PREUPLOAD_FILES}
+some fish = linter --ate-a-cat ${PREUPLOAD_FILES}
+some cat = formatter --cat-commit ${PREUPLOAD_COMMIT}
+some dog = tool --no-cat-in-commit-message ${PREUPLOAD_COMMIT_MESSAGE}
 ```
 
 ## [Builtin Hooks]
@@ -149,14 +159,20 @@ canned hooks already included geared towards AOSP style guidelines.
 * `commit_msg_buganizer_field`: Require a valid Bug: or Fixes: field.
 * `commit_msg_bug_field`: Require a valid `Bug:` line.
 * `commit_msg_changeid_field`: Require a valid `Change-Id:` Gerrit line.
+* `commit_msg_prebuilt_apk_fields`: Require badging and build information for
+  prebuilt APKs.
 * `commit_msg_test_field`: Require a `Test:` line.
 * `cpplint`: Run through the cpplint tool (for C++ code).
 * `gofmt`: Run Go code through `gofmt`.
 * `google_java_format`: Run Java code through
   [`google-java-format`](https://github.com/google/google-java-format)
 * `jsonlint`: Verify JSON code is sane.
-* `pylint`: Run Python code through `pylint`.
+* `pylint`: Alias of `pylint2`.  Will change to `pylint3` by end of 2019.
+* `pylint2`: Run Python code through `pylint` using Python 2.
+* `pylint3`: Run Python code through `pylint` using Python 3.
 * `xmllint`: Run XML code through `xmllint`.
+* `android_test_mapping_format`: Validate TEST_MAPPING files in Android source
+  code. Refer to go/test-mapping for more details.
 
 Note: Builtin hooks tend to match specific filenames (e.g. `.json`).  If no
 files match in a specific commit, then the hook will be skipped for that commit.
@@ -195,6 +211,7 @@ executables can be overridden through `[Tool Paths]`.  This is helpful to
 provide consistent behavior for developers across different OS and Linux
 distros/versions.  The following tools are recognized:
 
+* `bpfmt`: used for the `bpfmt` builtin hook.
 * `clang-format`: used for the `clang_format` builtin hook.
 * `cpplint`: used for the `cpplint` builtin hook.
 * `git-clang-format`: used for the `clang_format` builtin hook.
@@ -202,6 +219,8 @@ distros/versions.  The following tools are recognized:
 * `google-java-format`: used for the `google_java_format` builtin hook.
 * `google-java-format-diff`: used for the `google_java_format` builtin hook.
 * `pylint`: used for the `pylint` builtin hook.
+* `android-test-mapping-format`: used for the `android_test_mapping_format`
+  builtin hook.
 
 See [Placeholders](#Placeholders) for variables you can expand automatically.
 
@@ -224,9 +243,15 @@ These are notes for people updating the `pre-upload.py` hook itself:
 * New hooks can be added in `rh/hooks.py`.  Be sure to keep the list up-to-date
   with the documentation in this file.
 
+### Warnings
+
+If the return code of a hook is 77, then it is assumed to be a warning.  The
+output will be printed to the terminal, but uploading will still be allowed
+without a bypass being required.
+
 ## TODO/Limitations
 
-* `pylint` should support per-repo pylintrc files.
+* `pylint` should support per-directory pylintrc files.
 * Some checkers operate on the files as they exist in the filesystem.  This is
   not easy to fix because the linters require not just the modified file but the
   entire repo in order to perform full checks.  e.g. `pylint` needs to know what

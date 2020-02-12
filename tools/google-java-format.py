@@ -29,6 +29,9 @@ if sys.path[0] != _path:
     sys.path.insert(0, _path)
 del _path
 
+# We have to import our local modules after the sys.path tweak.  We can't use
+# relative imports because this is an executable program, not a module.
+# pylint: disable=wrong-import-position
 import rh.shell
 import rh.utils
 
@@ -55,6 +58,9 @@ def get_parser():
     # style.
     parser.add_argument('--noaosp', action='store_true',
                         help='Use google-java-format style instead of AOSP style.')
+    parser.add_argument('files', nargs='*',
+                        help='If specified, only consider differences in '
+                             'these files.')
     return parser
 
 
@@ -111,7 +117,8 @@ def main(argv):
 
     # TODO: Delegate to the tool once this issue is resolved:
     # https://github.com/google/google-java-format/issues/107
-    diff_cmd = ['git', 'diff', '-U0', '%s^!' % opts.commit]
+    diff_cmd = ['git', 'diff', '--no-ext-diff', '-U0', '%s^!' % opts.commit]
+    diff_cmd.extend(['--'] + opts.files)
     diff = rh.utils.run_command(diff_cmd, capture_output=True).output
 
     cmd = [opts.google_java_format_diff, '-p1']
@@ -130,7 +137,7 @@ def main(argv):
                                   input=diff,
                                   capture_output=True,
                                   extra_env=extra_env).output
-    if stdout != '':
+    if stdout:
         print('One or more files in your commit have Java formatting errors.')
         if platform.system() == 'Windows':
             print('You can run `python %s --fix %s` to fix this' %
