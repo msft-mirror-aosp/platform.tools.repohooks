@@ -29,8 +29,9 @@ if sys.path[0] != _path:
 del _path
 
 # pylint: disable=wrong-import-position
-import rh.results
 import rh.git
+import rh.results
+from rh.sixish import string_types
 import rh.utils
 
 
@@ -72,7 +73,7 @@ class Placeholders(object):
             for key, val in replacements.items():
                 var = '${%s}' % (key,)
                 if arg == var:
-                    if isinstance(val, str):
+                    if isinstance(val, string_types):
                         ret.append(val)
                     else:
                         ret.extend(val)
@@ -82,10 +83,9 @@ class Placeholders(object):
                 # If no exact matches, do an inline replacement.
                 def replace(m):
                     val = self.get(m.group(1))
-                    if isinstance(val, str):
+                    if isinstance(val, string_types):
                         return val
-                    else:
-                        return ' '.join(val)
+                    return ' '.join(val)
                 ret.append(re.sub(r'\$\{(%s)\}' % ('|'.join(all_vars),),
                                   replace, arg))
 
@@ -186,13 +186,13 @@ class HookOptions(object):
         return self.expand_vars([tool_path])[0]
 
 
-def _run_command(cmd, **kwargs):
+def _run(cmd, **kwargs):
     """Helper command for checks that tend to gather output."""
     kwargs.setdefault('redirect_stderr', True)
     kwargs.setdefault('combine_stdout_stderr', True)
     kwargs.setdefault('capture_output', True)
-    kwargs.setdefault('error_code_ok', True)
-    return rh.utils.run_command(cmd, **kwargs)
+    kwargs.setdefault('check', False)
+    return rh.utils.run(cmd, **kwargs)
 
 
 def _match_regex_list(subject, expressions):
@@ -246,9 +246,9 @@ def _get_build_os_name():
     system = platform.system()
     if 'Darwin' in system or 'Macintosh' in system:
         return 'darwin-x86'
-    else:
-        # TODO: Add more values if needed.
-        return 'linux-x86'
+
+    # TODO: Add more values if needed.
+    return 'linux-x86'
 
 
 def _fixup_func_caller(cmd, **kwargs):
@@ -259,9 +259,9 @@ def _fixup_func_caller(cmd, **kwargs):
     parameter in HookCommandResult.
     """
     def wrapper():
-        result = _run_command(cmd, **kwargs)
+        result = _run(cmd, **kwargs)
         if result.returncode not in (None, 0):
-            return result.output
+            return result.stdout
         return None
     return wrapper
 
@@ -269,7 +269,7 @@ def _fixup_func_caller(cmd, **kwargs):
 def _check_cmd(hook_name, project, commit, cmd, fixup_func=None, **kwargs):
     """Runs |cmd| and returns its result as a HookCommandResult."""
     return [rh.results.HookCommandResult(hook_name, project, commit,
-                                         _run_command(cmd, **kwargs),
+                                         _run(cmd, **kwargs),
                                          fixup_func=fixup_func)]
 
 
@@ -285,6 +285,25 @@ def check_custom(project, commit, _desc, diff, options=None, **kwargs):
     """Run a custom hook."""
     return _check_cmd(options.name, project, commit, options.args((), diff),
                       **kwargs)
+
+
+def check_bpfmt(project, commit, _desc, diff, options=None):
+    """Checks that Blueprint files are formatted with bpfmt."""
+    filtered = _filter_diff(diff, [r'\.bp$'])
+    if not filtered:
+        return None
+
+    bpfmt = options.tool_path('bpfmt')
+    cmd = [bpfmt, '-l'] + options.args((), filtered)
+    ret = []
+    for d in filtered:
+        data = rh.git.get_file_content(commit, d.file)
+        result = _run(cmd, input=data)
+        if result.stdout:
+            ret.append(rh.results.HookResult(
+                'bpfmt', project, commit, error=result.stdout,
+                files=(d.file,)))
+    return ret
 
 
 def check_checkpatch(project, commit, _desc, diff, options=None):
@@ -343,7 +362,7 @@ def check_commit_msg_bug_field(project, commit, desc, _diff, options=None):
         error = ('Commit message is missing a "%s:" line.  It must match the\n'
                  'following case-sensitive regex:\n\n    %s') % (field, regex)
     else:
-        return
+        return None
 
     return [rh.results.HookResult('commit msg: "%s:" check' % (field,),
                                   project, commit, error=error)]
@@ -363,14 +382,14 @@ def check_commit_msg_changeid_field(project, commit, desc, _diff, options=None):
         if check_re.match(line):
             found.append(line)
 
-    if len(found) == 0:
+    if not found:
         error = ('Commit message is missing a "%s:" line.  It must match the\n'
                  'following case-sensitive regex:\n\n    %s') % (field, regex)
     elif len(found) > 1:
         error = ('Commit message has too many "%s:" lines.  There can be only '
                  'one.') % (field,)
     else:
-        return
+        return None
 
     return [rh.results.HookResult('commit msg: "%s:" check' % (field,),
                                   project, commit, error=error)]
@@ -407,7 +426,7 @@ def check_commit_msg_prebuilt_apk_fields(project, commit, desc, diff,
 
     filtered = _filter_diff(diff, [r'\.apk$'])
     if not filtered:
-        return
+        return None
 
     regexes = [
         r'^package: .*$',
@@ -427,7 +446,7 @@ def check_commit_msg_prebuilt_apk_fields(project, commit, desc, diff,
     if missing:
         error = PREBUILT_APK_MSG % '\n    '.join(missing)
     else:
-        return
+        return None
 
     return [rh.results.HookResult('commit msg: "prebuilt apk:" check',
                                   project, commit, error=error)]
@@ -479,7 +498,7 @@ def check_commit_msg_test_field(project, commit, desc, _diff, options=None):
     if not found:
         error = TEST_MSG % (regex)
     else:
-        return
+        return None
 
     return [rh.results.HookResult('commit msg: "%s:" check' % (field,),
                                   project, commit, error=error)]
@@ -491,7 +510,7 @@ def check_cpplint(project, commit, _desc, diff, options=None):
     # but cpplint would just ignore them.
     filtered = _filter_diff(diff, [r'\.(cc|h|cpp|cu|cuh)$'])
     if not filtered:
-        return
+        return None
 
     cpplint = options.tool_path('cpplint')
     cmd = [cpplint] + options.args(('${PREUPLOAD_FILES}',), filtered)
@@ -502,17 +521,17 @@ def check_gofmt(project, commit, _desc, diff, options=None):
     """Checks that Go files are formatted with gofmt."""
     filtered = _filter_diff(diff, [r'\.go$'])
     if not filtered:
-        return
+        return None
 
     gofmt = options.tool_path('gofmt')
     cmd = [gofmt, '-l'] + options.args((), filtered)
     ret = []
     for d in filtered:
         data = rh.git.get_file_content(commit, d.file)
-        result = _run_command(cmd, input=data)
-        if result.output:
+        result = _run(cmd, input=data)
+        if result.stdout:
             ret.append(rh.results.HookResult(
-                'gofmt', project, commit, error=result.output,
+                'gofmt', project, commit, error=result.stdout,
                 files=(d.file,)))
     return ret
 
@@ -524,7 +543,7 @@ def check_json(project, commit, _desc, diff, options=None):
 
     filtered = _filter_diff(diff, [r'\.json$'])
     if not filtered:
-        return
+        return None
 
     ret = []
     for d in filtered:
@@ -538,18 +557,33 @@ def check_json(project, commit, _desc, diff, options=None):
     return ret
 
 
-def check_pylint(project, commit, _desc, diff, options=None):
+def _check_pylint(project, commit, _desc, diff, extra_args=None, options=None):
     """Run pylint."""
     filtered = _filter_diff(diff, [r'\.py$'])
     if not filtered:
-        return
+        return None
+
+    if extra_args is None:
+        extra_args = []
 
     pylint = options.tool_path('pylint')
     cmd = [
         get_helper_path('pylint.py'),
         '--executable-path', pylint,
-    ] + options.args(('${PREUPLOAD_FILES}',), filtered)
+    ] + extra_args + options.args(('${PREUPLOAD_FILES}',), filtered)
     return _check_cmd('pylint', project, commit, cmd)
+
+
+def check_pylint2(project, commit, desc, diff, options=None):
+    """Run pylint through Python 2."""
+    return _check_pylint(project, commit, desc, diff, options=options)
+
+
+def check_pylint3(project, commit, desc, diff, options=None):
+    """Run pylint through Python 3."""
+    return _check_pylint(project, commit, desc, diff,
+                         extra_args=['--executable-path=pylint3'],
+                         options=options)
 
 
 def check_xmllint(project, commit, _desc, diff, options=None):
@@ -587,7 +621,7 @@ def check_xmllint(project, commit, _desc, diff, options=None):
 
     filtered = _filter_diff(diff, [r'\.(%s)$' % '|'.join(extensions)])
     if not filtered:
-        return
+        return None
 
     # TODO: Figure out how to integrate schema validation.
     # XXX: Should we use python's XML libs instead?
@@ -602,11 +636,12 @@ def check_android_test_mapping(project, commit, _desc, diff, options=None):
         raise ValueError('Android TEST_MAPPING check takes no options')
     filtered = _filter_diff(diff, [r'(^|.*/)TEST_MAPPING$'])
     if not filtered:
-        return
+        return None
 
     testmapping_format = options.tool_path('android-test-mapping-format')
+    testmapping_args = ['--commit', commit]
     cmd = [testmapping_format] + options.args(
-        (project.dir, '${PREUPLOAD_FILES}',), filtered)
+        (project.dir, '${PREUPLOAD_FILES}'), filtered) + testmapping_args
     return _check_cmd('android-test-mapping-format', project, commit, cmd)
 
 
@@ -614,6 +649,7 @@ def check_android_test_mapping(project, commit, _desc, diff, options=None):
 # Note: Make sure to keep the top level README.md up to date when adding more!
 BUILTIN_HOOKS = {
     'android_test_mapping_format': check_android_test_mapping,
+    'bpfmt': check_bpfmt,
     'checkpatch': check_checkpatch,
     'clang_format': check_clang_format,
     'commit_msg_bug_field': check_commit_msg_bug_field,
@@ -624,7 +660,9 @@ BUILTIN_HOOKS = {
     'gofmt': check_gofmt,
     'google_java_format': check_google_java_format,
     'jsonlint': check_json,
-    'pylint': check_pylint,
+    'pylint': check_pylint2,
+    'pylint2': check_pylint2,
+    'pylint3': check_pylint3,
     'xmllint': check_xmllint,
 }
 
@@ -633,6 +671,7 @@ BUILTIN_HOOKS = {
 TOOL_PATHS = {
     'android-test-mapping-format':
         os.path.join(TOOLS_DIR, 'android_test_mapping_format.py'),
+    'bpfmt': 'bpfmt',
     'clang-format': 'clang-format',
     'cpplint': os.path.join(TOOLS_DIR, 'cpplint.py'),
     'git-clang-format': 'git-clang-format',
