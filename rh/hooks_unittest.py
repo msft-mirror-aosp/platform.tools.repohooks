@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 # -*- coding:utf-8 -*-
 # Copyright 2016 The Android Open Source Project
 #
@@ -18,7 +18,6 @@
 
 from __future__ import print_function
 
-import mock
 import os
 import sys
 import unittest
@@ -28,9 +27,14 @@ if sys.path[0] != _path:
     sys.path.insert(0, _path)
 del _path
 
+# We have to import our local modules after the sys.path tweak.  We can't use
+# relative imports because this is an executable program, not a module.
+# pylint: disable=wrong-import-position
 import rh
-import rh.hooks
 import rh.config
+import rh.hooks
+from rh.sixish import mock
+from rh.sixish import string_types
 
 
 class HooksDocsTests(unittest.TestCase):
@@ -48,16 +52,18 @@ class HooksDocsTests(unittest.TestCase):
         """Extract the |section| text out of the readme."""
         ret = []
         in_section = False
-        for line in open(self.readme):
-            if not in_section:
-                # Look for the section like "## [Tool Paths]".
-                if line.startswith('#') and line.lstrip('#').strip() == section:
-                    in_section = True
-            else:
-                # Once we hit the next section (higher or lower), break.
-                if line[0] == '#':
-                    break
-                ret.append(line)
+        with open(self.readme) as fp:
+            for line in fp:
+                if not in_section:
+                    # Look for the section like "## [Tool Paths]".
+                    if (line.startswith('#') and
+                            line.lstrip('#').strip() == section):
+                        in_section = True
+                else:
+                    # Once we hit the next section (higher or lower), break.
+                    if line[0] == '#':
+                        break
+                    ret.append(line)
         return ''.join(ret)
 
     def testBuiltinHooks(self):
@@ -218,14 +224,14 @@ class UtilsTests(unittest.TestCase):
         # Just verify it returns something and doesn't crash.
         # pylint: disable=protected-access
         ret = rh.hooks._get_build_os_name()
-        self.assertTrue(isinstance(ret, str))
+        self.assertTrue(isinstance(ret, string_types))
         self.assertNotEqual(ret, '')
 
     def testGetHelperPath(self):
         """Check get_helper_path behavior."""
         # Just verify it doesn't crash.  It's a dirt simple func.
         ret = rh.hooks.get_helper_path('booga')
-        self.assertTrue(isinstance(ret, str))
+        self.assertTrue(isinstance(ret, string_types))
         self.assertNotEqual(ret, '')
 
 
@@ -240,16 +246,21 @@ class BuiltinHooksTests(unittest.TestCase):
                                   remote='remote')
         self.options = rh.hooks.HookOptions('hook name', [], {})
 
-    def _test_commit_messages(self, func, accept, msgs):
+    def _test_commit_messages(self, func, accept, msgs, files=None):
         """Helper for testing commit message hooks.
 
         Args:
           func: The hook function to test.
           accept: Whether all the |msgs| should be accepted.
           msgs: List of messages to test.
+          files: List of files to pass to the hook.
         """
+        if files:
+            diff = [rh.git.RawDiffEntry(file=x) for x in files]
+        else:
+            diff = []
         for desc in msgs:
-            ret = func(self.project, 'commit', desc, (), options=self.options)
+            ret = func(self.project, 'commit', desc, diff, options=self.options)
             if accept:
                 self.assertEqual(
                     ret, None, msg='Should have accepted: {{{%s}}}' % (desc,))
@@ -280,6 +291,20 @@ class BuiltinHooksTests(unittest.TestCase):
         for hook in rh.hooks.BUILTIN_HOOKS:
             self.assertIn('test_%s' % (hook,), dir(self),
                           msg='Missing unittest for builtin hook %s' % (hook,))
+
+    def test_bpfmt(self, mock_check, _mock_run):
+        """Verify the bpfmt builtin hook."""
+        # First call should do nothing as there are no files to check.
+        ret = rh.hooks.check_bpfmt(
+            self.project, 'commit', 'desc', (), options=self.options)
+        self.assertIsNone(ret)
+        self.assertFalse(mock_check.called)
+
+        # Second call will have some results.
+        diff = [rh.git.RawDiffEntry(file='Android.bp')]
+        ret = rh.hooks.check_bpfmt(
+            self.project, 'commit', 'desc', diff, options=self.options)
+        self.assertIsNotNone(ret)
 
     def test_checkpatch(self, mock_check, _mock_run):
         """Verify the checkpatch builtin hook."""
@@ -336,6 +361,8 @@ class BuiltinHooksTests(unittest.TestCase):
                 'subj',
                 'subj\n\nBUG=1234\n',
                 'subj\n\nBUG: 1234\n',
+                'subj\n\nBug: N/A\n',
+                'subj\n\nBug:\n',
             ))
 
     def test_commit_msg_changeid_field(self, _mock_check, _mock_run):
@@ -353,6 +380,112 @@ class BuiltinHooksTests(unittest.TestCase):
                 'subj\n\nChange-Id: 1234\n',
                 'subj\n\nChange-ID: I1234\n',
             ))
+
+    def test_commit_msg_prebuilt_apk_fields(self, _mock_check, _mock_run):
+        """Verify the check_commit_msg_prebuilt_apk_fields builtin hook."""
+        # Commits without APKs should pass.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_prebuilt_apk_fields,
+            True,
+            (
+                'subj\nTest: test case\nBug: bug id\n',
+            ),
+            ['foo.cpp', 'bar.py',]
+        )
+
+        # Commits with APKs and all the required messages should pass.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_prebuilt_apk_fields,
+            True,
+            (
+                ('Test App\n\nbar.apk\npackage: name=\'com.foo.bar\'\n'
+                 'versionCode=\'1001\'\nversionName=\'1.0.1001-A\'\n'
+                 'platformBuildVersionName=\'\'\ncompileSdkVersion=\'28\'\n'
+                 'compileSdkVersionCodename=\'9\'\nsdkVersion:\'16\'\n'
+                 'targetSdkVersion:\'28\'\n\nBuilt here:\n'
+                 'http://foo.bar.com/builder\n\n'
+                 'This build IS suitable for public release.\n\n'
+                 'Bug: 123\nTest: test\nChange-Id: XXXXXXX\n'),
+                ('Test App\n\nBuilt here:\nhttp://foo.bar.com/builder\n\n'
+                 'This build IS NOT suitable for public release.\n\n'
+                 'bar.apk\npackage: name=\'com.foo.bar\'\n'
+                 'versionCode=\'1001\'\nversionName=\'1.0.1001-A\'\n'
+                 'platformBuildVersionName=\'\'\ncompileSdkVersion=\'28\'\n'
+                 'compileSdkVersionCodename=\'9\'\nsdkVersion:\'16\'\n'
+                 'targetSdkVersion:\'28\'\n\nBug: 123\nTest: test\n'
+                 'Change-Id: XXXXXXX\n'),
+                ('Test App\n\nbar.apk\npackage: name=\'com.foo.bar\'\n'
+                 'versionCode=\'1001\'\nversionName=\'1.0.1001-A\'\n'
+                 'platformBuildVersionName=\'\'\ncompileSdkVersion=\'28\'\n'
+                 'compileSdkVersionCodename=\'9\'\nsdkVersion:\'16\'\n'
+                 'targetSdkVersion:\'28\'\n\nBuilt here:\n'
+                 'http://foo.bar.com/builder\n\n'
+                 'This build IS suitable for preview release but IS NOT '
+                 'suitable for public release.\n\n'
+                 'Bug: 123\nTest: test\nChange-Id: XXXXXXX\n'),
+                ('Test App\n\nbar.apk\npackage: name=\'com.foo.bar\'\n'
+                 'versionCode=\'1001\'\nversionName=\'1.0.1001-A\'\n'
+                 'platformBuildVersionName=\'\'\ncompileSdkVersion=\'28\'\n'
+                 'compileSdkVersionCodename=\'9\'\nsdkVersion:\'16\'\n'
+                 'targetSdkVersion:\'28\'\n\nBuilt here:\n'
+                 'http://foo.bar.com/builder\n\n'
+                 'This build IS NOT suitable for preview or public release.\n\n'
+                 'Bug: 123\nTest: test\nChange-Id: XXXXXXX\n'),
+            ),
+            ['foo.apk', 'bar.py',]
+        )
+
+        # Commits with APKs and without all the required messages should fail.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_prebuilt_apk_fields,
+            False,
+            (
+                'subj\nTest: test case\nBug: bug id\n',
+                # Missing 'package'.
+                ('Test App\n\nbar.apk\n'
+                 'versionCode=\'1001\'\nversionName=\'1.0.1001-A\'\n'
+                 'platformBuildVersionName=\'\'\ncompileSdkVersion=\'28\'\n'
+                 'compileSdkVersionCodename=\'9\'\nsdkVersion:\'16\'\n'
+                 'targetSdkVersion:\'28\'\n\nBuilt here:\n'
+                 'http://foo.bar.com/builder\n\n'
+                 'This build IS suitable for public release.\n\n'
+                 'Bug: 123\nTest: test\nChange-Id: XXXXXXX\n'),
+                # Missing 'sdkVersion'.
+                ('Test App\n\nbar.apk\npackage: name=\'com.foo.bar\'\n'
+                 'versionCode=\'1001\'\nversionName=\'1.0.1001-A\'\n'
+                 'platformBuildVersionName=\'\'\ncompileSdkVersion=\'28\'\n'
+                 'compileSdkVersionCodename=\'9\'\n'
+                 'targetSdkVersion:\'28\'\n\nBuilt here:\n'
+                 'http://foo.bar.com/builder\n\n'
+                 'This build IS suitable for public release.\n\n'
+                 'Bug: 123\nTest: test\nChange-Id: XXXXXXX\n'),
+                # Missing 'targetSdkVersion'.
+                ('Test App\n\nbar.apk\npackage: name=\'com.foo.bar\'\n'
+                 'versionCode=\'1001\'\nversionName=\'1.0.1001-A\'\n'
+                 'platformBuildVersionName=\'\'\ncompileSdkVersion=\'28\'\n'
+                 'compileSdkVersionCodename=\'9\'\nsdkVersion:\'16\'\n'
+                 'Built here:\nhttp://foo.bar.com/builder\n\n'
+                 'This build IS suitable for public release.\n\n'
+                 'Bug: 123\nTest: test\nChange-Id: XXXXXXX\n'),
+                # Missing build location.
+                ('Test App\n\nbar.apk\npackage: name=\'com.foo.bar\'\n'
+                 'versionCode=\'1001\'\nversionName=\'1.0.1001-A\'\n'
+                 'platformBuildVersionName=\'\'\ncompileSdkVersion=\'28\'\n'
+                 'compileSdkVersionCodename=\'9\'\nsdkVersion:\'16\'\n'
+                 'targetSdkVersion:\'28\'\n\n'
+                 'This build IS suitable for public release.\n\n'
+                 'Bug: 123\nTest: test\nChange-Id: XXXXXXX\n'),
+                # Missing public release indication.
+                ('Test App\n\nbar.apk\npackage: name=\'com.foo.bar\'\n'
+                 'versionCode=\'1001\'\nversionName=\'1.0.1001-A\'\n'
+                 'platformBuildVersionName=\'\'\ncompileSdkVersion=\'28\'\n'
+                 'compileSdkVersionCodename=\'9\'\nsdkVersion:\'16\'\n'
+                 'targetSdkVersion:\'28\'\n\nBuilt here:\n'
+                 'http://foo.bar.com/builder\n\n'
+                 'Bug: 123\nTest: test\nChange-Id: XXXXXXX\n'),
+            ),
+            ['foo.apk', 'bar.py',]
+        )
 
     def test_commit_msg_test_field(self, _mock_check, _mock_run):
         """Verify the commit_msg_test_field builtin hook."""
@@ -406,13 +539,37 @@ class BuiltinHooksTests(unittest.TestCase):
 
     def test_pylint(self, mock_check, _mock_run):
         """Verify the pylint builtin hook."""
-        self._test_file_filter(mock_check, rh.hooks.check_pylint,
+        self._test_file_filter(mock_check, rh.hooks.check_pylint2,
+                               ('foo.py',))
+
+    def test_pylint2(self, mock_check, _mock_run):
+        """Verify the pylint2 builtin hook."""
+        self._test_file_filter(mock_check, rh.hooks.check_pylint2,
+                               ('foo.py',))
+
+    def test_pylint3(self, mock_check, _mock_run):
+        """Verify the pylint3 builtin hook."""
+        self._test_file_filter(mock_check, rh.hooks.check_pylint3,
                                ('foo.py',))
 
     def test_xmllint(self, mock_check, _mock_run):
         """Verify the xmllint builtin hook."""
         self._test_file_filter(mock_check, rh.hooks.check_xmllint,
                                ('foo.xml',))
+
+    def test_android_test_mapping_format(self, mock_check, _mock_run):
+        """Verify the android_test_mapping_format builtin hook."""
+        # First call should do nothing as there are no files to check.
+        ret = rh.hooks.check_android_test_mapping(
+            self.project, 'commit', 'desc', (), options=self.options)
+        self.assertIsNone(ret)
+        self.assertFalse(mock_check.called)
+
+        # Second call will have some results.
+        diff = [rh.git.RawDiffEntry(file='TEST_MAPPING')]
+        ret = rh.hooks.check_android_test_mapping(
+            self.project, 'commit', 'desc', diff, options=self.options)
+        self.assertIsNotNone(ret)
 
 
 if __name__ == '__main__':
