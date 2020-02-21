@@ -457,9 +457,9 @@ def run_command(cmd, error_message=None, redirect_stdout=False,
 
     # Make sure output is returned as a string rather than bytes.
     if cmd_result.output is not None:
-        cmd_result.output = cmd_result.output.decode('utf-8', 'replace')
+        cmd_result.output = str(cmd_result.output.decode('utf-8', 'replace'))
     if cmd_result.error is not None:
-        cmd_result.error = cmd_result.error.decode('utf-8', 'replace')
+        cmd_result.error = str(cmd_result.error.decode('utf-8', 'replace'))
 
     return cmd_result
 # pylint: enable=redefined-builtin,input-builtin
