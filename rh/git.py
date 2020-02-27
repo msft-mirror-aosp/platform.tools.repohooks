@@ -26,6 +26,7 @@ if sys.path[0] != _path:
     sys.path.insert(0, _path)
 del _path
 
+# pylint: disable=wrong-import-position
 import rh.utils
 
 
@@ -91,18 +92,6 @@ def get_patch(commit):
     return rh.utils.run_command(cmd, capture_output=True).output
 
 
-def _try_utf8_decode(data):
-    """Attempts to decode a string as UTF-8.
-
-    Returns:
-      The decoded Unicode object, or the original string if parsing fails.
-    """
-    try:
-        return unicode(data, 'utf-8', 'strict')
-    except UnicodeDecodeError:
-        return data
-
-
 def get_file_content(commit, path):
     """Returns the content of a file at a specific commit.
 
@@ -117,11 +106,22 @@ def get_file_content(commit, path):
     return rh.utils.run_command(cmd, capture_output=True).output
 
 
-# RawDiffEntry represents a line of raw formatted git diff output.
-RawDiffEntry = rh.utils.collection(
-    'RawDiffEntry',
-    src_mode=0, dst_mode=0, src_sha=None, dst_sha=None,
-    status=None, score=None, src_file=None, dst_file=None, file=None)
+class RawDiffEntry(object):
+    """Representation of a line from raw formatted git diff output."""
+
+    # pylint: disable=redefined-builtin
+    def __init__(self, src_mode=0, dst_mode=0, src_sha=None, dst_sha=None,
+                 status=None, score=None, src_file=None, dst_file=None,
+                 file=None):
+        self.src_mode = src_mode
+        self.dst_mode = dst_mode
+        self.src_sha = src_sha
+        self.dst_sha = dst_sha
+        self.status = status
+        self.score = score
+        self.src_file = src_file
+        self.dst_file = dst_file
+        self.file = file
 
 
 # This regular expression pulls apart a line of raw formatted git diff output.
@@ -144,18 +144,19 @@ def raw_diff(path, target):
     """
     entries = []
 
-    cmd = ['git', 'diff', '-M', '--raw', target]
+    cmd = ['git', 'diff', '--no-ext-diff', '-M', '--raw', target]
     diff = rh.utils.run_command(cmd, cwd=path, capture_output=True).output
     diff_lines = diff.strip().splitlines()
     for line in diff_lines:
         match = DIFF_RE.match(line)
         if not match:
             raise ValueError('Failed to parse diff output: %s' % line)
-        diff = RawDiffEntry(**match.groupdict())
-        diff.src_mode = int(diff.src_mode)
-        diff.dst_mode = int(diff.dst_mode)
-        diff.file = diff.dst_file if diff.dst_file else diff.src_file
-        entries.append(diff)
+        rawdiff = RawDiffEntry(**match.groupdict())
+        rawdiff.src_mode = int(rawdiff.src_mode)
+        rawdiff.dst_mode = int(rawdiff.dst_mode)
+        rawdiff.file = (rawdiff.dst_file
+                        if rawdiff.dst_file else rawdiff.src_file)
+        entries.append(rawdiff)
 
     return entries
 
@@ -196,3 +197,10 @@ def find_repo_root(path=None):
             raise ValueError('Could not locate .repo in %s' % orig_path)
 
     return path
+
+
+def is_git_repository(path):
+    """Returns True if the path is a valid git repository."""
+    cmd = ['git', 'rev-parse', '--resolve-git-dir', os.path.join(path, '.git')]
+    result = rh.utils.run_command(cmd, quiet=True, error_code_ok=True)
+    return result.returncode == 0
