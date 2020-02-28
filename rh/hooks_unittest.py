@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/python
 # -*- coding:utf-8 -*-
 # Copyright 2016 The Android Open Source Project
 #
@@ -22,6 +22,8 @@ import os
 import sys
 import unittest
 
+import mock
+
 _path = os.path.realpath(__file__ + '/../..')
 if sys.path[0] != _path:
     sys.path.insert(0, _path)
@@ -33,7 +35,6 @@ del _path
 import rh
 import rh.hooks
 import rh.config
-from rh.sixish import mock
 
 
 class HooksDocsTests(unittest.TestCase):
@@ -51,18 +52,16 @@ class HooksDocsTests(unittest.TestCase):
         """Extract the |section| text out of the readme."""
         ret = []
         in_section = False
-        with open(self.readme) as fp:
-            for line in fp:
-                if not in_section:
-                    # Look for the section like "## [Tool Paths]".
-                    if (line.startswith('#') and
-                            line.lstrip('#').strip() == section):
-                        in_section = True
-                else:
-                    # Once we hit the next section (higher or lower), break.
-                    if line[0] == '#':
-                        break
-                    ret.append(line)
+        for line in open(self.readme):
+            if not in_section:
+                # Look for the section like "## [Tool Paths]".
+                if line.startswith('#') and line.lstrip('#').strip() == section:
+                    in_section = True
+            else:
+                # Once we hit the next section (higher or lower), break.
+                if line[0] == '#':
+                    break
+                ret.append(line)
         return ''.join(ret)
 
     def testBuiltinHooks(self):
@@ -291,20 +290,6 @@ class BuiltinHooksTests(unittest.TestCase):
             self.assertIn('test_%s' % (hook,), dir(self),
                           msg='Missing unittest for builtin hook %s' % (hook,))
 
-    def test_bpfmt(self, mock_check, _mock_run):
-        """Verify the bpfmt builtin hook."""
-        # First call should do nothing as there are no files to check.
-        ret = rh.hooks.check_bpfmt(
-            self.project, 'commit', 'desc', (), options=self.options)
-        self.assertIsNone(ret)
-        self.assertFalse(mock_check.called)
-
-        # Second call will have some results.
-        diff = [rh.git.RawDiffEntry(file='Android.bp')]
-        ret = rh.hooks.check_bpfmt(
-            self.project, 'commit', 'desc', diff, options=self.options)
-        self.assertIsNotNone(ret)
-
     def test_checkpatch(self, mock_check, _mock_run):
         """Verify the checkpatch builtin hook."""
         ret = rh.hooks.check_checkpatch(
@@ -509,17 +494,7 @@ class BuiltinHooksTests(unittest.TestCase):
 
     def test_pylint(self, mock_check, _mock_run):
         """Verify the pylint builtin hook."""
-        self._test_file_filter(mock_check, rh.hooks.check_pylint2,
-                               ('foo.py',))
-
-    def test_pylint2(self, mock_check, _mock_run):
-        """Verify the pylint2 builtin hook."""
-        self._test_file_filter(mock_check, rh.hooks.check_pylint2,
-                               ('foo.py',))
-
-    def test_pylint3(self, mock_check, _mock_run):
-        """Verify the pylint3 builtin hook."""
-        self._test_file_filter(mock_check, rh.hooks.check_pylint3,
+        self._test_file_filter(mock_check, rh.hooks.check_pylint,
                                ('foo.py',))
 
     def test_xmllint(self, mock_check, _mock_run):

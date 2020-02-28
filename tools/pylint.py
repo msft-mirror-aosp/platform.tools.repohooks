@@ -67,7 +67,6 @@ def main(argv):
 
     try:
         os.execvp(cmd[0], cmd)
-        return 0
     except OSError as e:
         if e.errno == errno.ENOENT:
             print('%s: unable to run `%s`: %s' % (__file__, cmd[0], e),
