@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 # -*- coding:utf-8 -*-
 # Copyright 2016 The Android Open Source Project
 #
@@ -22,8 +22,6 @@ import os
 import sys
 import unittest
 
-import mock
-
 _path = os.path.realpath(__file__ + '/../..')
 if sys.path[0] != _path:
     sys.path.insert(0, _path)
@@ -33,8 +31,10 @@ del _path
 # relative imports because this is an executable program, not a module.
 # pylint: disable=wrong-import-position
 import rh
-import rh.hooks
 import rh.config
+import rh.hooks
+from rh.sixish import mock
+from rh.sixish import string_types
 
 
 class HooksDocsTests(unittest.TestCase):
@@ -52,16 +52,18 @@ class HooksDocsTests(unittest.TestCase):
         """Extract the |section| text out of the readme."""
         ret = []
         in_section = False
-        for line in open(self.readme):
-            if not in_section:
-                # Look for the section like "## [Tool Paths]".
-                if line.startswith('#') and line.lstrip('#').strip() == section:
-                    in_section = True
-            else:
-                # Once we hit the next section (higher or lower), break.
-                if line[0] == '#':
-                    break
-                ret.append(line)
+        with open(self.readme) as fp:
+            for line in fp:
+                if not in_section:
+                    # Look for the section like "## [Tool Paths]".
+                    if (line.startswith('#') and
+                            line.lstrip('#').strip() == section):
+                        in_section = True
+                else:
+                    # Once we hit the next section (higher or lower), break.
+                    if line[0] == '#':
+                        break
+                    ret.append(line)
         return ''.join(ret)
 
     def testBuiltinHooks(self):
@@ -211,10 +213,10 @@ class UtilsTests(unittest.TestCase):
     """Verify misc utility functions."""
 
     def testRunCommand(self):
-        """Check _run_command behavior."""
+        """Check _run behavior."""
         # Most testing is done against the utils.RunCommand already.
         # pylint: disable=protected-access
-        ret = rh.hooks._run_command(['true'])
+        ret = rh.hooks._run(['true'])
         self.assertEqual(ret.returncode, 0)
 
     def testBuildOs(self):
@@ -222,19 +224,19 @@ class UtilsTests(unittest.TestCase):
         # Just verify it returns something and doesn't crash.
         # pylint: disable=protected-access
         ret = rh.hooks._get_build_os_name()
-        self.assertTrue(isinstance(ret, str))
+        self.assertTrue(isinstance(ret, string_types))
         self.assertNotEqual(ret, '')
 
     def testGetHelperPath(self):
         """Check get_helper_path behavior."""
         # Just verify it doesn't crash.  It's a dirt simple func.
         ret = rh.hooks.get_helper_path('booga')
-        self.assertTrue(isinstance(ret, str))
+        self.assertTrue(isinstance(ret, string_types))
         self.assertNotEqual(ret, '')
 
 
 
-@mock.patch.object(rh.utils, 'run_command')
+@mock.patch.object(rh.utils, 'run')
 @mock.patch.object(rh.hooks, '_check_cmd', return_value=['check_cmd'])
 class BuiltinHooksTests(unittest.TestCase):
     """Verify the builtin hooks."""
@@ -260,11 +262,11 @@ class BuiltinHooksTests(unittest.TestCase):
         for desc in msgs:
             ret = func(self.project, 'commit', desc, diff, options=self.options)
             if accept:
-                self.assertEqual(
-                    ret, None, msg='Should have accepted: {{{%s}}}' % (desc,))
+                self.assertFalse(
+                    bool(ret), msg='Should have accepted: {{{%s}}}' % (desc,))
             else:
-                self.assertNotEqual(
-                    ret, None, msg='Should have rejected: {{{%s}}}' % (desc,))
+                self.assertTrue(
+                    bool(ret), msg='Should have rejected: {{{%s}}}' % (desc,))
 
     def _test_file_filter(self, mock_check, func, files):
         """Helper for testing hooks that filter by files and run external tools.
@@ -289,6 +291,20 @@ class BuiltinHooksTests(unittest.TestCase):
         for hook in rh.hooks.BUILTIN_HOOKS:
             self.assertIn('test_%s' % (hook,), dir(self),
                           msg='Missing unittest for builtin hook %s' % (hook,))
+
+    def test_bpfmt(self, mock_check, _mock_run):
+        """Verify the bpfmt builtin hook."""
+        # First call should do nothing as there are no files to check.
+        ret = rh.hooks.check_bpfmt(
+            self.project, 'commit', 'desc', (), options=self.options)
+        self.assertIsNone(ret)
+        self.assertFalse(mock_check.called)
+
+        # Second call will have some results.
+        diff = [rh.git.RawDiffEntry(file='Android.bp')]
+        ret = rh.hooks.check_bpfmt(
+            self.project, 'commit', 'desc', diff, options=self.options)
+        self.assertIsNotNone(ret)
 
     def test_checkpatch(self, mock_check, _mock_run):
         """Verify the checkpatch builtin hook."""
@@ -323,6 +339,8 @@ class BuiltinHooksTests(unittest.TestCase):
                 'subj',
                 'subj\n\nBUG=1234\n',
                 'subj\n\nBUG: 1234\n',
+                'subj\n\nBug: N/A\n',
+                'subj\n\nBug:\n',
             ))
 
     def test_commit_msg_changeid_field(self, _mock_check, _mock_run):
@@ -494,7 +512,17 @@ class BuiltinHooksTests(unittest.TestCase):
 
     def test_pylint(self, mock_check, _mock_run):
         """Verify the pylint builtin hook."""
-        self._test_file_filter(mock_check, rh.hooks.check_pylint,
+        self._test_file_filter(mock_check, rh.hooks.check_pylint2,
+                               ('foo.py',))
+
+    def test_pylint2(self, mock_check, _mock_run):
+        """Verify the pylint2 builtin hook."""
+        self._test_file_filter(mock_check, rh.hooks.check_pylint2,
+                               ('foo.py',))
+
+    def test_pylint3(self, mock_check, _mock_run):
+        """Verify the pylint3 builtin hook."""
+        self._test_file_filter(mock_check, rh.hooks.check_pylint3,
                                ('foo.py',))
 
     def test_xmllint(self, mock_check, _mock_run):
