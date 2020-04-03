@@ -213,10 +213,10 @@ class UtilsTests(unittest.TestCase):
     """Verify misc utility functions."""
 
     def testRunCommand(self):
-        """Check _run_command behavior."""
+        """Check _run behavior."""
         # Most testing is done against the utils.RunCommand already.
         # pylint: disable=protected-access
-        ret = rh.hooks._run_command(['true'])
+        ret = rh.hooks._run(['true'])
         self.assertEqual(ret.returncode, 0)
 
     def testBuildOs(self):
@@ -236,7 +236,7 @@ class UtilsTests(unittest.TestCase):
 
 
 
-@mock.patch.object(rh.utils, 'run_command')
+@mock.patch.object(rh.utils, 'run')
 @mock.patch.object(rh.hooks, '_check_cmd', return_value=['check_cmd'])
 class BuiltinHooksTests(unittest.TestCase):
     """Verify the builtin hooks."""
@@ -262,11 +262,11 @@ class BuiltinHooksTests(unittest.TestCase):
         for desc in msgs:
             ret = func(self.project, 'commit', desc, diff, options=self.options)
             if accept:
-                self.assertEqual(
-                    ret, None, msg='Should have accepted: {{{%s}}}' % (desc,))
+                self.assertFalse(
+                    bool(ret), msg='Should have accepted: {{{%s}}}' % (desc,))
             else:
-                self.assertNotEqual(
-                    ret, None, msg='Should have rejected: {{{%s}}}' % (desc,))
+                self.assertTrue(
+                    bool(ret), msg='Should have rejected: {{{%s}}}' % (desc,))
 
     def _test_file_filter(self, mock_check, func, files):
         """Helper for testing hooks that filter by files and run external tools.
@@ -339,6 +339,8 @@ class BuiltinHooksTests(unittest.TestCase):
                 'subj',
                 'subj\n\nBUG=1234\n',
                 'subj\n\nBUG: 1234\n',
+                'subj\n\nBug: N/A\n',
+                'subj\n\nBug:\n',
             ))
 
     def test_commit_msg_changeid_field(self, _mock_check, _mock_run):
@@ -477,6 +479,83 @@ class BuiltinHooksTests(unittest.TestCase):
                 'subj',
                 'subj\n\nTEST=1234\n',
                 'subj\n\nTEST: I1234\n',
+            ))
+
+    def test_commit_msg_relnote_field_format(self, _mock_check, _mock_run):
+        """Verify the commit_msg_relnote_field_format builtin hook."""
+        # Check some good messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_field_format,
+            True,
+            (
+                'subj',
+                'subj\n\nTest: i did done dood it\n',
+                'subj\n\nMore content\n\nTest: i did done dood it\n',
+                'subj\n\nRelnote: This is a release note\n',
+                'subj\n\nRelnote:This is a release note\n',
+                'subj\n\nRelnote: This is a release note.\nBug: 1234',
+                'subj\n\nRelnote: "This is a release note."\nBug: 1234',
+                'subj\n\nRelnote: This is a release note.\nChange-Id: 1234',
+                'subj\n\nRelnote: This is a release note.\n\nChange-Id: 1234',
+                ('subj\n\nRelnote: "This is a release note."\n\n'
+                 'Change-Id: 1234'),
+                ('subj\n\nRelnote: This is a release note.\n\n'
+                 'It has more info, but it is not part of the release note'
+                 '\nChange-Id: 1234'),
+                ('subj\n\nRelnote: "This is a release note.\n'
+                 'It contains a correct second line."'),
+                ('subj\n\nRelnote:"This is a release note.\n'
+                 'It contains a correct second line."'),
+                ('subj\n\nRelnote: "This is a release note.\n'
+                 'It contains a correct second line.\n'
+                 'And even a third line."\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: This is release note 1.\n'
+                 'Relnote: This is release note 2.\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: This is release note 1.\n'
+                 'Relnote: "This is release note 2, and it\n'
+                 'contains a correctly formatted third line."\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: "This is release note 1 with\n'
+                 'a correctly formatted second line."\n\n'
+                 'Relnote: "This is release note 2, and it\n'
+                 'contains a correctly formatted second line."\n'
+                 'Bug: 1234'),
+            ))
+
+        # Check some bad messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_field_format,
+            False,
+            (
+                'subj\n\nReleaseNote: This is a release note.\n',
+                'subj\n\nRelnotes: This is a release note.\n',
+                'subj\n\nRel-note: This is a release note.\n',
+                'subj\n\nrelnoTes: This is a release note.\n',
+                'subj\n\nrel-Note: This is a release note.\n',
+                ('subj\n\nRelnote: This is a release note.\n'
+                 'It contains an incorrect second line.'),
+                ('subj\n\nRelnote: "This is a release note.\n'
+                 'It contains multiple lines.\n'
+                 'But it does not provide an ending quote.\n'),
+                ('subj\n\nRelnote: "This is a release note.\n'
+                 'It contains multiple lines but no closing quote.\n'
+                 'Test: my test "hello world"\n'),
+                ('subj\n\nRelnote: This is release note 1.\n'
+                 'Relnote: "This is release note 2, and it\n'
+                 'contains an incorrectly formatted third line.\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: This is release note 1 with\n'
+                 'an incorrectly formatted second line.\n\n'
+                 'Relnote: "This is release note 2, and it\n'
+                 'contains a correctly formatted second line."\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: "This is release note 1 with\n'
+                 'a correctly formatted second line."\n\n'
+                 'Relnote: This is release note 2, and it\n'
+                 'contains an incorrectly formatted second line.\n'
+                 'Bug: 1234'),
             ))
 
     def test_cpplint(self, mock_check, _mock_run):
