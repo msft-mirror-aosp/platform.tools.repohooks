@@ -27,6 +27,7 @@ import difflib
 import os
 import platform
 import re
+import six
 import string
 import subprocess
 import sys
