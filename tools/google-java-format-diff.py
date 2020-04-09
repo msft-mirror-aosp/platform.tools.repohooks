@@ -27,11 +27,13 @@ import difflib
 import os
 import platform
 import re
+import six
 import string
-import StringIO
 import subprocess
 import sys
 from distutils.spawn import find_executable
+from io import StringIO
+from six import StringIO
 
 def find_executable_portable(executable):
   if platform.system() == 'Windows':
@@ -104,9 +106,9 @@ def main():
           ['-lines', str(start_line) + ':' + str(end_line)])
 
   # Reformat files containing changes in place.
-  for filename, lines in lines_by_file.iteritems():
+  for filename, lines in six.iteritems(lines_by_file):
     if args.i and args.verbose:
-      print 'Formatting', filename
+      print('Formatting %s' % filename)
     command = [binary]
 
     # Windows does not support running bash scripts directly
@@ -132,7 +134,7 @@ def main():
       # Open in binary mode to prevent Python from messing with line endings.
       with open(filename, 'rb') as f:
         code = f.readlines()
-      formatted_code = StringIO.StringIO(stdout).readlines()
+      formatted_code = StringIO(stdout.decode('utf-8')).readlines()
       diff = difflib.unified_diff(code, formatted_code,
                                   filename, filename,
                                   '(before formatting)', '(after formatting)')
