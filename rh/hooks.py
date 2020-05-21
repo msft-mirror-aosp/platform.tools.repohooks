@@ -726,11 +726,11 @@ def check_pylint2(project, commit, desc, diff, options=None):
 def check_pylint3(project, commit, desc, diff, options=None):
     """Run pylint through Python 3."""
     return _check_pylint(project, commit, desc, diff,
-                         extra_args=['--executable-path=pylint3'],
+                         extra_args=['--py3'],
                          options=options)
 
 
-def check_rustfmt(project, commit, desc, diff, options=None):
+def check_rustfmt(project, commit, _desc, diff, options=None):
     """Run "rustfmt --check" on diffed rust files"""
     filtered = _filter_diff(diff, [r'\.rs$'])
     if not filtered:
