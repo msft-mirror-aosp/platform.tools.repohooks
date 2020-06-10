@@ -181,6 +181,9 @@ canned hooks already included geared towards AOSP style guidelines.
 * `commit_msg_relnote_field_format`: Check for possible misspellings of the
   `Relnote:` field and that multiline release notes are properly formatted with
   quotes.
+* `commit_msg_relnote_for_current_txt`: Check that CLs with changes to
+  current.txt or public_plus_experimental_current.txt also contain a
+  `Relnote:` field in the commit message.
 * `commit_msg_test_field`: Require a `Test:` line.
 * `cpplint`: Run through the cpplint tool (for C++ code).
 * `gofmt`: Run Go code through `gofmt`.
@@ -190,6 +193,7 @@ canned hooks already included geared towards AOSP style guidelines.
 * `pylint`: Alias of `pylint2`.  Will change to `pylint3` by end of 2019.
 * `pylint2`: Run Python code through `pylint` using Python 2.
 * `pylint3`: Run Python code through `pylint` using Python 3.
+* `rustfmt`: Run Rust code through `rustfmt`.
 * `xmllint`: Run XML code through `xmllint`.
 * `android_test_mapping_format`: Validate TEST_MAPPING files in Android source
   code. Refer to go/test-mapping for more details.
@@ -239,6 +243,7 @@ distros/versions.  The following tools are recognized:
 * `google-java-format`: used for the `google_java_format` builtin hook.
 * `google-java-format-diff`: used for the `google_java_format` builtin hook.
 * `pylint`: used for the `pylint` builtin hook.
+* `rustfmt`: used for the `rustfmt` builtin hook.
 * `android-test-mapping-format`: used for the `android_test_mapping_format`
   builtin hook.
 
