@@ -33,7 +33,6 @@ del _path
 # pylint: disable=wrong-import-position
 import rh
 import rh.utils
-from rh.sixish import mock
 
 
 class TimeDeltaStrTests(unittest.TestCase):
@@ -65,116 +64,70 @@ class TimeDeltaStrTests(unittest.TestCase):
         self.assertEqual('1h6m40.300s', rh.utils.timedelta_str(delta))
 
 
-class CommandResultTests(unittest.TestCase):
-    """Verify behavior of CommandResult object."""
+class CompletedProcessTests(unittest.TestCase):
+    """Verify behavior of CompletedProcess object."""
 
     def test_empty_cmdstr(self):
         """Check cmdstr with an empty command."""
-        result = rh.utils.CommandResult(cmd=[])
+        result = rh.utils.CompletedProcess(args=[])
         self.assertEqual('', result.cmdstr)
 
     def test_basic_cmdstr(self):
         """Check cmdstr with a basic command command."""
-        result = rh.utils.CommandResult(cmd=['ls', 'a b'])
+        result = rh.utils.CompletedProcess(args=['ls', 'a b'])
         self.assertEqual("ls 'a b'", result.cmdstr)
 
     def test_str(self):
         """Check str() handling."""
         # We don't enforce much, just that it doesn't crash.
-        result = rh.utils.CommandResult()
+        result = rh.utils.CompletedProcess()
         self.assertNotEqual('', str(result))
-        result = rh.utils.CommandResult(cmd=[])
+        result = rh.utils.CompletedProcess(args=[])
         self.assertNotEqual('', str(result))
 
     def test_repr(self):
         """Check repr() handling."""
         # We don't enforce much, just that it doesn't crash.
-        result = rh.utils.CommandResult()
+        result = rh.utils.CompletedProcess()
         self.assertNotEqual('', repr(result))
-        result = rh.utils.CommandResult(cmd=[])
+        result = rh.utils.CompletedProcess(args=[])
         self.assertNotEqual('', repr(result))
 
 
-class RunCommandErrorTests(unittest.TestCase):
-    """Verify behavior of RunCommandError object."""
-
-    def setUp(self):
-        self.result = rh.utils.CommandResult(cmd=['mycmd'])
+class CalledProcessErrorTests(unittest.TestCase):
+    """Verify behavior of CalledProcessError object."""
 
     def test_basic(self):
         """Basic test we can create a normal instance."""
-        rh.utils.RunCommandError('msg', self.result)
-        rh.utils.RunCommandError('msg', self.result, exception=Exception('bad'))
+        rh.utils.CalledProcessError(0, ['mycmd'])
+        rh.utils.CalledProcessError(1, ['mycmd'], exception=Exception('bad'))
 
     def test_stringify(self):
         """Check stringify() handling."""
         # We don't assert much so we leave flexibility in changing format.
-        err = rh.utils.RunCommandError('msg', self.result)
+        err = rh.utils.CalledProcessError(0, ['mycmd'])
         self.assertIn('mycmd', err.stringify())
-        err = rh.utils.RunCommandError('msg', self.result,
-                                       exception=Exception('bad'))
+        err = rh.utils.CalledProcessError(
+            0, ['mycmd'], exception=Exception('bad'))
         self.assertIn('mycmd', err.stringify())
 
     def test_str(self):
         """Check str() handling."""
         # We don't assert much so we leave flexibility in changing format.
-        err = rh.utils.RunCommandError('msg', self.result)
+        err = rh.utils.CalledProcessError(0, ['mycmd'])
         self.assertIn('mycmd', str(err))
-        err = rh.utils.RunCommandError('msg', self.result,
-                                       exception=Exception('bad'))
+        err = rh.utils.CalledProcessError(
+            0, ['mycmd'], exception=Exception('bad'))
         self.assertIn('mycmd', str(err))
 
     def test_repr(self):
         """Check repr() handling."""
         # We don't assert much so we leave flexibility in changing format.
-        err = rh.utils.RunCommandError('msg', self.result)
+        err = rh.utils.CalledProcessError(0, ['mycmd'])
         self.assertNotEqual('', repr(err))
-        err = rh.utils.RunCommandError('msg', self.result,
-                                       exception=Exception('bad'))
+        err = rh.utils.CalledProcessError(
+            0, ['mycmd'], exception=Exception('bad'))
         self.assertNotEqual('', repr(err))
-
-
-# We shouldn't require sudo to run unittests :).
-@mock.patch.object(rh.utils, 'run')
-@mock.patch.object(os, 'geteuid', return_value=1000)
-class SudoRunCommandTests(unittest.TestCase):
-    """Verify behavior of sudo_run helper."""
-
-    def test_run_as_root_as_root(self, mock_geteuid, mock_run):
-        """Check behavior when we're already root."""
-        mock_geteuid.return_value = 0
-        ret = rh.utils.sudo_run(['ls'], user='root')
-        self.assertIsNotNone(ret)
-        args, _kwargs = mock_run.call_args
-        self.assertEqual((['ls'],), args)
-
-    def test_run_as_root_as_nonroot(self, _mock_geteuid, mock_run):
-        """Check behavior when we're not already root."""
-        ret = rh.utils.sudo_run(['ls'], user='root')
-        self.assertIsNotNone(ret)
-        args, _kwargs = mock_run.call_args
-        self.assertEqual((['sudo', '--', 'ls'],), args)
-
-    def test_run_as_nonroot_as_nonroot(self, _mock_geteuid, mock_run):
-        """Check behavior when we're not already root."""
-        ret = rh.utils.sudo_run(['ls'], user='nobody')
-        self.assertIsNotNone(ret)
-        args, _kwargs = mock_run.call_args
-        self.assertEqual((['sudo', '-u', 'nobody', '--', 'ls'],), args)
-
-    def test_env(self, _mock_geteuid, mock_run):
-        """Check passing through env vars."""
-        ret = rh.utils.sudo_run(['ls'], extra_env={'FOO': 'bar'})
-        self.assertIsNotNone(ret)
-        args, _kwargs = mock_run.call_args
-        self.assertEqual((['sudo', 'FOO=bar', '--', 'ls'],), args)
-
-    def test_shell(self, _mock_geteuid, _mock_run):
-        """Check attempts to use shell code are rejected."""
-        with self.assertRaises(AssertionError):
-            rh.utils.sudo_run('foo')
-        with self.assertRaises(AssertionError):
-            rh.utils.sudo_run(['ls'], shell=True)
 
 
 class RunCommandTests(unittest.TestCase):
@@ -184,32 +137,32 @@ class RunCommandTests(unittest.TestCase):
         """Simple basic test."""
         ret = rh.utils.run(['true'])
         self.assertEqual('true', ret.cmdstr)
-        self.assertIsNone(ret.output)
-        self.assertIsNone(ret.error)
+        self.assertIsNone(ret.stdout)
+        self.assertIsNone(ret.stderr)
 
     def test_stdout_capture(self):
         """Verify output capturing works."""
         ret = rh.utils.run(['echo', 'hi'], redirect_stdout=True)
-        self.assertEqual('hi\n', ret.output)
-        self.assertIsNone(ret.error)
+        self.assertEqual('hi\n', ret.stdout)
+        self.assertIsNone(ret.stderr)
 
     def test_stderr_capture(self):
         """Verify stderr capturing works."""
         ret = rh.utils.run(['sh', '-c', 'echo hi >&2'], redirect_stderr=True)
-        self.assertIsNone(ret.output)
-        self.assertEqual('hi\n', ret.error)
+        self.assertIsNone(ret.stdout)
+        self.assertEqual('hi\n', ret.stderr)
 
     def test_stdout_utf8(self):
         """Verify reading UTF-8 data works."""
         ret = rh.utils.run(['printf', r'\xc3\x9f'], redirect_stdout=True)
-        self.assertEqual(u'ß', ret.output)
-        self.assertIsNone(ret.error)
+        self.assertEqual(u'ß', ret.stdout)
+        self.assertIsNone(ret.stderr)
 
     def test_stdin_utf8(self):
         """Verify writing UTF-8 data works."""
         ret = rh.utils.run(['cat'], redirect_stdout=True, input=u'ß')
-        self.assertEqual(u'ß', ret.output)
-        self.assertIsNone(ret.error)
+        self.assertEqual(u'ß', ret.stdout)
+        self.assertIsNone(ret.stderr)
 
 
 if __name__ == '__main__':
