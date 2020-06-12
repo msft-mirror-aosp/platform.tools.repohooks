@@ -103,6 +103,10 @@ such will be expanded correctly via argument positions, so do not try to
 force your own quote handling.
 
 * `${PREUPLOAD_FILES}`: List of files to operate on.
+* `${PREUPLOAD_FILES_PREFIXED}`: A list of files to operate on.
+   Any string preceding/attached to the keyword ${PREUPLOAD_FILES_PREFIXED}
+   will be repeated for each file automatically. If no string is preceding/attached
+   to the keyword, the previous argument will be repeated before each file.
 * `${PREUPLOAD_COMMIT}`: Commit hash.
 * `${PREUPLOAD_COMMIT_MESSAGE}`: Commit message.
 
@@ -112,6 +116,22 @@ are automatically expanded for you:
 * `${REPO_ROOT}`: The absolute path of the root of the repo checkout.
 * `${BUILD_OS}`: The string `darwin-x86` for macOS and the string `linux-x86`
   for Linux/x86.
+
+### Examples
+
+Here are some examples of using the placeholders.
+Consider this sample config file.
+```
+[Hook Scripts]
+lister = ls ${PREUPLOAD_FILES}
+checker prefix = check --file=${PREUPLOAD_FILES_PREFIXED}
+checker flag = check --file ${PREUPLOAD_FILES_PREFIXED}
+```
+With a commit that changes `path1/file1` and `path2/file2`, then this will run
+programs with the arguments:
+* ['ls', 'path1/file1', 'path2/file2']
+* ['check', '--file=path1/file1', '--file=path2/file2']
+* ['check', '--file', 'path1/file1', '--file', 'path2/file2']
 
 ## [Options]
 
@@ -158,6 +178,12 @@ canned hooks already included geared towards AOSP style guidelines.
 * `commit_msg_changeid_field`: Require a valid `Change-Id:` Gerrit line.
 * `commit_msg_prebuilt_apk_fields`: Require badging and build information for
   prebuilt APKs.
+* `commit_msg_relnote_field_format`: Check for possible misspellings of the
+  `Relnote:` field and that multiline release notes are properly formatted with
+  quotes.
+* `commit_msg_relnote_for_current_txt`: Check that CLs with changes to
+  current.txt or public_plus_experimental_current.txt also contain a
+  `Relnote:` field in the commit message.
 * `commit_msg_test_field`: Require a `Test:` line.
 * `cpplint`: Run through the cpplint tool (for C++ code).
 * `gofmt`: Run Go code through `gofmt`.
@@ -167,6 +193,7 @@ canned hooks already included geared towards AOSP style guidelines.
 * `pylint`: Alias of `pylint2`.  Will change to `pylint3` by end of 2019.
 * `pylint2`: Run Python code through `pylint` using Python 2.
 * `pylint3`: Run Python code through `pylint` using Python 3.
+* `rustfmt`: Run Rust code through `rustfmt`.
 * `xmllint`: Run XML code through `xmllint`.
 * `android_test_mapping_format`: Validate TEST_MAPPING files in Android source
   code. Refer to go/test-mapping for more details.
@@ -216,6 +243,7 @@ distros/versions.  The following tools are recognized:
 * `google-java-format`: used for the `google_java_format` builtin hook.
 * `google-java-format-diff`: used for the `google_java_format` builtin hook.
 * `pylint`: used for the `pylint` builtin hook.
+* `rustfmt`: used for the `rustfmt` builtin hook.
 * `android-test-mapping-format`: used for the `android_test_mapping_format`
   builtin hook.
 
