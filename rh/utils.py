@@ -50,24 +50,15 @@ def timedelta_str(delta):
     return ret
 
 
-class CompletedProcess(getattr(subprocess, 'CompletedProcess', object)):
+class CompletedProcess(subprocess.CompletedProcess):
     """An object to store various attributes of a child process.
 
     This is akin to subprocess.CompletedProcess.
     """
 
-    # The linter is confused by the getattr usage above.
-    # TODO(vapier): Drop this once we're Python 3-only and we drop getattr.
-    # pylint: disable=bad-option-value,super-on-old-class
     def __init__(self, args=None, returncode=None, stdout=None, stderr=None):
-        if sys.version_info.major < 3:
-            self.args = args
-            self.stdout = stdout
-            self.stderr = stderr
-            self.returncode = returncode
-        else:
-            super().__init__(
-                args=args, returncode=returncode, stdout=stdout, stderr=stderr)
+        super().__init__(
+            args=args, returncode=returncode, stdout=stdout, stderr=stderr)
 
     @property
     def cmd(self):
