@@ -97,7 +97,9 @@ class PlaceholderTests(unittest.TestCase):
             'PREUPLOAD_COMMIT_MESSAGE': 'commit message',
             'PREUPLOAD_COMMIT': '5c4c293174bb61f0f39035a71acd9084abfa743d',
         })
-        self.replacer = rh.hooks.Placeholders()
+        self.replacer = rh.hooks.Placeholders(
+            [rh.git.RawDiffEntry(file=x)
+             for x in ['path1/file1', 'path2/file2']])
 
     def tearDown(self):
         os.environ.clear()
@@ -117,9 +119,13 @@ class PlaceholderTests(unittest.TestCase):
             # We also make sure that things in ${REPO_ROOT} are not double
             # expanded (which is why the return includes ${BUILD_OS}).
             '${REPO_ROOT}/some/prog/REPO_ROOT/ok',
-            # Verify lists are merged rather than inserted.  In this case, the
-            # list is empty, but we'd hit an error still if we saw [] in args.
+            # Verify lists are merged rather than inserted.
             '${PREUPLOAD_FILES}',
+            # Verify each file is preceded with '--file=' prefix.
+            '--file=${PREUPLOAD_FILES_PREFIXED}',
+            # Verify each file is preceded with '--file' argument.
+            '--file',
+            '${PREUPLOAD_FILES_PREFIXED}',
             # Verify values with whitespace don't expand into multiple args.
             '${PREUPLOAD_COMMIT_MESSAGE}',
             # Verify multiple values get replaced.
@@ -130,6 +136,14 @@ class PlaceholderTests(unittest.TestCase):
         output_args = self.replacer.expand_vars(input_args)
         exp_args = [
             '/ ${BUILD_OS}/some/prog/REPO_ROOT/ok',
+            'path1/file1',
+            'path2/file2',
+            '--file=path1/file1',
+            '--file=path2/file2',
+            '--file',
+            'path1/file1',
+            '--file',
+            'path2/file2',
             'commit message',
             '5c4c293174bb61f0f39035a71acd9084abfa743d^commit message',
             '${THIS_VAR_IS_GOOD}',
@@ -154,7 +168,8 @@ class PlaceholderTests(unittest.TestCase):
 
     def testPREUPLOAD_FILES(self):
         """Verify handling of PREUPLOAD_FILES."""
-        self.assertEqual(self.replacer.get('PREUPLOAD_FILES'), [])
+        self.assertEqual(self.replacer.get('PREUPLOAD_FILES'),
+                         ['path1/file1', 'path2/file2'])
 
     @mock.patch.object(rh.git, 'find_repo_root', return_value='/repo!')
     def testREPO_ROOT(self, m):
@@ -262,11 +277,11 @@ class BuiltinHooksTests(unittest.TestCase):
         for desc in msgs:
             ret = func(self.project, 'commit', desc, diff, options=self.options)
             if accept:
-                self.assertEqual(
-                    ret, None, msg='Should have accepted: {{{%s}}}' % (desc,))
+                self.assertFalse(
+                    bool(ret), msg='Should have accepted: {{{%s}}}' % (desc,))
             else:
-                self.assertNotEqual(
-                    ret, None, msg='Should have rejected: {{{%s}}}' % (desc,))
+                self.assertTrue(
+                    bool(ret), msg='Should have rejected: {{{%s}}}' % (desc,))
 
     def _test_file_filter(self, mock_check, func, files):
         """Helper for testing hooks that filter by files and run external tools.
@@ -481,6 +496,190 @@ class BuiltinHooksTests(unittest.TestCase):
                 'subj\n\nTEST: I1234\n',
             ))
 
+    def test_commit_msg_relnote_field_format(self, _mock_check, _mock_run):
+        """Verify the commit_msg_relnote_field_format builtin hook."""
+        # Check some good messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_field_format,
+            True,
+            (
+                'subj',
+                'subj\n\nTest: i did done dood it\n',
+                'subj\n\nMore content\n\nTest: i did done dood it\n',
+                'subj\n\nRelnote: This is a release note\n',
+                'subj\n\nRelnote:This is a release note\n',
+                'subj\n\nRelnote: This is a release note.\nBug: 1234',
+                'subj\n\nRelnote: "This is a release note."\nBug: 1234',
+                'subj\n\nRelnote: This is a release note.\nChange-Id: 1234',
+                'subj\n\nRelnote: This is a release note.\n\nChange-Id: 1234',
+                ('subj\n\nRelnote: "This is a release note."\n\n'
+                 'Change-Id: 1234'),
+                ('subj\n\nRelnote: This is a release note.\n\n'
+                 'It has more info, but it is not part of the release note'
+                 '\nChange-Id: 1234'),
+                ('subj\n\nRelnote: "This is a release note.\n'
+                 'It contains a correct second line."'),
+                ('subj\n\nRelnote:"This is a release note.\n'
+                 'It contains a correct second line."'),
+                ('subj\n\nRelnote: "This is a release note.\n'
+                 'It contains a correct second line.\n'
+                 'And even a third line."\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: This is release note 1.\n'
+                 'Relnote: This is release note 2.\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: This is release note 1.\n'
+                 'Relnote: "This is release note 2, and it\n'
+                 'contains a correctly formatted third line."\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: "This is release note 1 with\n'
+                 'a correctly formatted second line."\n\n'
+                 'Relnote: "This is release note 2, and it\n'
+                 'contains a correctly formatted second line."\n'
+                 'Bug: 1234'),
+            ))
+
+        # Check some bad messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_field_format,
+            False,
+            (
+                'subj\n\nReleaseNote: This is a release note.\n',
+                'subj\n\nRelnotes: This is a release note.\n',
+                'subj\n\nRel-note: This is a release note.\n',
+                'subj\n\nrelnoTes: This is a release note.\n',
+                'subj\n\nrel-Note: This is a release note.\n',
+                ('subj\n\nRelnote: This is a release note.\n'
+                 'It contains an incorrect second line.'),
+                ('subj\n\nRelnote: "This is a release note.\n'
+                 'It contains multiple lines.\n'
+                 'But it does not provide an ending quote.\n'),
+                ('subj\n\nRelnote: "This is a release note.\n'
+                 'It contains multiple lines but no closing quote.\n'
+                 'Test: my test "hello world"\n'),
+                ('subj\n\nRelnote: This is release note 1.\n'
+                 'Relnote: "This is release note 2, and it\n'
+                 'contains an incorrectly formatted third line.\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: This is release note 1 with\n'
+                 'an incorrectly formatted second line.\n\n'
+                 'Relnote: "This is release note 2, and it\n'
+                 'contains a correctly formatted second line."\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: "This is release note 1 with\n'
+                 'a correctly formatted second line."\n\n'
+                 'Relnote: This is release note 2, and it\n'
+                 'contains an incorrectly formatted second line.\n'
+                 'Bug: 1234'),
+            ))
+
+    def test_commit_msg_relnote_for_current_txt(self, _mock_check, _mock_run):
+        """Verify the commit_msg_relnote_for_current_txt builtin hook."""
+        diff_without_current_txt = ['bar/foo.txt',
+                                    'foo.cpp',
+                                    'foo.java',
+                                    'foo_current.java',
+                                    'foo_current.txt',
+                                    'baz/current.java',
+                                    'baz/foo_current.txt']
+        diff_with_current_txt = diff_without_current_txt + ['current.txt']
+        diff_with_subdir_current_txt = \
+            diff_without_current_txt + ['foo/current.txt']
+        diff_with_experimental_current_txt = \
+            diff_without_current_txt + ['public_plus_experimental_current.txt']
+        # Check some good messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_for_current_txt,
+            True,
+            (
+                'subj\n\nRelnote: This is a release note\n',
+                'subj\n\nRelnote: This is a release note.\n\nChange-Id: 1234',
+                ('subj\n\nRelnote: This is release note 1 with\n'
+                 'an incorrectly formatted second line.\n\n'
+                 'Relnote: "This is release note 2, and it\n'
+                 'contains a correctly formatted second line."\n'
+                 'Bug: 1234'),
+            ),
+            files=diff_with_current_txt,
+        )
+        # Check some good messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_for_current_txt,
+            True,
+            (
+                'subj\n\nRelnote: This is a release note\n',
+                'subj\n\nRelnote: This is a release note.\n\nChange-Id: 1234',
+                ('subj\n\nRelnote: This is release note 1 with\n'
+                 'an incorrectly formatted second line.\n\n'
+                 'Relnote: "This is release note 2, and it\n'
+                 'contains a correctly formatted second line."\n'
+                 'Bug: 1234'),
+            ),
+            files=diff_with_experimental_current_txt,
+        )
+        # Check some good messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_for_current_txt,
+            True,
+            (
+                'subj\n\nRelnote: This is a release note\n',
+                'subj\n\nRelnote: This is a release note.\n\nChange-Id: 1234',
+                ('subj\n\nRelnote: This is release note 1 with\n'
+                 'an incorrectly formatted second line.\n\n'
+                 'Relnote: "This is release note 2, and it\n'
+                 'contains a correctly formatted second line."\n'
+                 'Bug: 1234'),
+            ),
+            files=diff_with_subdir_current_txt,
+        )
+        # Check some good messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_for_current_txt,
+            True,
+            (
+                'subj',
+                'subj\nBug: 12345\nChange-Id: 1234',
+                'subj\n\nRelnote: This is a release note\n',
+                'subj\n\nRelnote: This is a release note.\n\nChange-Id: 1234',
+                ('subj\n\nRelnote: This is release note 1 with\n'
+                 'an incorrectly formatted second line.\n\n'
+                 'Relnote: "This is release note 2, and it\n'
+                 'contains a correctly formatted second line."\n'
+                 'Bug: 1234'),
+            ),
+            files=diff_without_current_txt,
+        )
+        # Check some bad messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_for_current_txt,
+            False,
+            (
+                'subj'
+                'subj\nBug: 12345\nChange-Id: 1234',
+            ),
+            files=diff_with_current_txt,
+        )
+        # Check some bad messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_for_current_txt,
+            False,
+            (
+                'subj'
+                'subj\nBug: 12345\nChange-Id: 1234',
+            ),
+            files=diff_with_experimental_current_txt,
+        )
+        # Check some bad messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_for_current_txt,
+            False,
+            (
+                'subj'
+                'subj\nBug: 12345\nChange-Id: 1234',
+            ),
+            files=diff_with_subdir_current_txt,
+        )
+
     def test_cpplint(self, mock_check, _mock_run):
         """Verify the cpplint builtin hook."""
         self._test_file_filter(mock_check, rh.hooks.check_cpplint,
@@ -524,6 +723,10 @@ class BuiltinHooksTests(unittest.TestCase):
         """Verify the pylint3 builtin hook."""
         self._test_file_filter(mock_check, rh.hooks.check_pylint3,
                                ('foo.py',))
+
+    def test_rustfmt(self, mock_check, _mock_run):
+        self._test_file_filter(mock_check, rh.hooks.check_rustfmt,
+                               ('foo.rs',))
 
     def test_xmllint(self, mock_check, _mock_run):
         """Verify the xmllint builtin hook."""
