@@ -293,7 +293,7 @@ class BuiltinHooksTests(unittest.TestCase):
         """
         # First call should do nothing as there are no files to check.
         ret = func(self.project, 'commit', 'desc', (), options=self.options)
-        self.assertIsNone(ret)
+        self.assertEqual(ret, None)
         self.assertFalse(mock_check.called)
 
         # Second call should include some checks.
@@ -690,21 +690,21 @@ class BuiltinHooksTests(unittest.TestCase):
         # First call should do nothing as there are no files to check.
         ret = rh.hooks.check_gofmt(
             self.project, 'commit', 'desc', (), options=self.options)
-        self.assertIsNone(ret)
+        self.assertEqual(ret, None)
         self.assertFalse(mock_check.called)
 
         # Second call will have some results.
         diff = [rh.git.RawDiffEntry(file='foo.go')]
         ret = rh.hooks.check_gofmt(
             self.project, 'commit', 'desc', diff, options=self.options)
-        self.assertIsNotNone(ret)
+        self.assertNotEqual(ret, None)
 
     def test_jsonlint(self, mock_check, _mock_run):
         """Verify the jsonlint builtin hook."""
         # First call should do nothing as there are no files to check.
         ret = rh.hooks.check_json(
             self.project, 'commit', 'desc', (), options=self.options)
-        self.assertIsNone(ret)
+        self.assertEqual(ret, None)
         self.assertFalse(mock_check.called)
 
         # TODO: Actually pass some valid/invalid json data down.
@@ -725,17 +725,8 @@ class BuiltinHooksTests(unittest.TestCase):
                                ('foo.py',))
 
     def test_rustfmt(self, mock_check, _mock_run):
-        # First call should do nothing as there are no files to check.
-        ret = rh.hooks.check_rustfmt(
-            self.project, 'commit', 'desc', (), options=self.options)
-        self.assertEqual(ret, None)
-        self.assertFalse(mock_check.called)
-
-        # Second call will have some results.
-        diff = [rh.git.RawDiffEntry(file='lib.rs')]
-        ret = rh.hooks.check_rustfmt(
-            self.project, 'commit', 'desc', diff, options=self.options)
-        self.assertNotEqual(ret, None)
+        self._test_file_filter(mock_check, rh.hooks.check_rustfmt,
+                               ('foo.rs',))
 
     def test_xmllint(self, mock_check, _mock_run):
         """Verify the xmllint builtin hook."""
