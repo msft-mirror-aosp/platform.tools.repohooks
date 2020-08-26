@@ -17,7 +17,6 @@
 
 from __future__ import print_function
 
-import ConfigParser
 import functools
 import os
 import shlex
@@ -31,6 +30,7 @@ del _path
 # pylint: disable=wrong-import-position
 import rh.hooks
 import rh.shell
+from rh.sixish import configparser
 
 
 class Error(Exception):
@@ -41,54 +41,50 @@ class ValidationError(Error):
     """Config file has unknown sections/keys or other values."""
 
 
-class RawConfigParser(ConfigParser.RawConfigParser):
+# Sentinel so we can handle None-vs-unspecified.
+_UNSET = object()
+
+
+class RawConfigParser(configparser.RawConfigParser):
     """Like RawConfigParser but with some default helpers."""
 
-    @staticmethod
-    def _check_args(name, cnt_min, cnt_max, args):
-        cnt = len(args)
-        if cnt not in (0, cnt_max - cnt_min):
-            raise TypeError('%s() takes %i or %i arguments (got %i)' %
-                            (name, cnt_min, cnt_max, cnt,))
-        return cnt
+    # pylint doesn't like it when we extend the API.
+    # pylint: disable=arguments-differ
 
-    def options(self, section, *args):
-        """Return the options in |section| (with default |args|).
+    def options(self, section, default=_UNSET):
+        """Return the options in |section|.
 
         Args:
           section: The section to look up.
-          args: What to return if |section| does not exist.
+          default: What to return if |section| does not exist.
         """
-        cnt = self._check_args('options', 2, 3, args)
         try:
-            return ConfigParser.RawConfigParser.options(self, section)
-        except ConfigParser.NoSectionError:
-            if cnt == 1:
-                return args[0]
+            return configparser.RawConfigParser.options(self, section)
+        except configparser.NoSectionError:
+            if default is not _UNSET:
+                return default
             raise
 
-    def get(self, section, option, *args):
-        """Return the value for |option| in |section| (with default |args|)."""
-        cnt = self._check_args('get', 3, 4, args)
+    def get(self, section, option, default=_UNSET):
+        """Return the value for |option| in |section| (with |default|)."""
         try:
-            return ConfigParser.RawConfigParser.get(self, section, option)
-        except (ConfigParser.NoSectionError, ConfigParser.NoOptionError):
-            if cnt == 1:
-                return args[0]
+            return configparser.RawConfigParser.get(self, section, option)
+        except (configparser.NoSectionError, configparser.NoOptionError):
+            if default is not _UNSET:
+                return default
             raise
 
-    def items(self, section, *args):
+    def items(self, section, default=_UNSET):
         """Return a list of (key, value) tuples for the options in |section|."""
-        cnt = self._check_args('items', 2, 3, args)
         try:
-            return ConfigParser.RawConfigParser.items(self, section)
-        except ConfigParser.NoSectionError:
-            if cnt == 1:
-                return args[0]
+            return configparser.RawConfigParser.items(self, section)
+        except configparser.NoSectionError:
+            if default is not _UNSET:
+                return default
             raise
 
 
-class PreSubmitConfig(object):
+class PreUploadConfig(object):
     """Config file used for per-project `repo upload` hooks."""
 
     FILENAME = 'PREUPLOAD.cfg'
@@ -99,9 +95,16 @@ class PreSubmitConfig(object):
     BUILTIN_HOOKS_OPTIONS_SECTION = 'Builtin Hooks Options'
     TOOL_PATHS_SECTION = 'Tool Paths'
     OPTIONS_SECTION = 'Options'
+    VALID_SECTIONS = {
+        CUSTOM_HOOKS_SECTION,
+        BUILTIN_HOOKS_SECTION,
+        BUILTIN_HOOKS_OPTIONS_SECTION,
+        TOOL_PATHS_SECTION,
+        OPTIONS_SECTION,
+    }
 
     OPTION_IGNORE_MERGED_COMMITS = 'ignore_merged_commits'
-    VALID_OPTIONS = (OPTION_IGNORE_MERGED_COMMITS,)
+    VALID_OPTIONS = {OPTION_IGNORE_MERGED_COMMITS}
 
     def __init__(self, paths=('',), global_paths=()):
         """Initialize.
@@ -121,7 +124,7 @@ class PreSubmitConfig(object):
                     self.paths.append(path)
                     try:
                         config.read(path)
-                    except ConfigParser.ParsingError as e:
+                    except configparser.ParsingError as e:
                         raise ValidationError('%s: %s' % (path, e))
 
         self.paths = []
@@ -186,14 +189,7 @@ class PreSubmitConfig(object):
         config = self.config
 
         # Reject unknown sections.
-        valid_sections = set((
-            self.CUSTOM_HOOKS_SECTION,
-            self.BUILTIN_HOOKS_SECTION,
-            self.BUILTIN_HOOKS_OPTIONS_SECTION,
-            self.TOOL_PATHS_SECTION,
-            self.OPTIONS_SECTION,
-        ))
-        bad_sections = set(config.sections()) - valid_sections
+        bad_sections = set(config.sections()) - self.VALID_SECTIONS
         if bad_sections:
             raise ValidationError('%s: unknown sections: %s' %
                                   (self.paths, bad_sections))
@@ -249,10 +245,9 @@ class PreSubmitConfig(object):
                                       (self.paths, bad_tools))
 
         # Reject unknown options.
-        valid_options = set(self.VALID_OPTIONS)
         if config.has_section(self.OPTIONS_SECTION):
             options = set(config.options(self.OPTIONS_SECTION))
-            bad_options = options - valid_options
+            bad_options = options - self.VALID_OPTIONS
             if bad_options:
                 raise ValidationError('%s: unknown options: %s' %
                                       (self.paths, bad_options))
