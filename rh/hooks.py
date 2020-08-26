@@ -682,7 +682,7 @@ def check_commit_msg_relnote_for_current_txt(project, commit, desc, diff,
 
     filtered = _filter_diff(
         diff,
-        [r'^(public_plus_experimental_current|current)\.txt$']
+        [r'(^|/)(public_plus_experimental_current|current)\.txt$']
     )
     # If the commit does not contain a change to *current.txt, then this repo
     # hook check no longer applies.
@@ -792,8 +792,27 @@ def check_rustfmt(project, commit, _desc, diff, options=None):
         return None
 
     rustfmt = options.tool_path('rustfmt')
-    cmd = [rustfmt] + options.args(('--check', '${PREUPLOAD_FILES}',), filtered)
-    return _check_cmd('rustfmt', project, commit, cmd)
+    cmd = [rustfmt] + options.args((), filtered)
+    ret = []
+    for d in filtered:
+        data = rh.git.get_file_content(commit, d.file)
+        result = _run(cmd, input=data)
+        # If the parsing failed, stdout will contain enough details on the
+        # location of the error.
+        if result.returncode:
+            ret.append(rh.results.HookResult(
+                'rustfmt', project, commit, error=result.stdout,
+                files=(d.file,)))
+            continue
+        # TODO(b/164111102): rustfmt stable does not support --check on stdin.
+        # If no error is reported, compare stdin with stdout.
+        if data != result.stdout:
+            msg = ('To fix, please run: %s' %
+                   rh.shell.cmd_to_str(cmd + [d.file]))
+            ret.append(rh.results.HookResult(
+                'rustfmt', project, commit, error=msg,
+                files=(d.file,)))
+    return ret
 
 
 def check_xmllint(project, commit, _desc, diff, options=None):
