@@ -17,6 +17,8 @@
 
 from __future__ import print_function
 
+import collections
+import fnmatch
 import json
 import os
 import platform
@@ -69,26 +71,39 @@ class Placeholders(object):
 
         ret = []
         for arg in args:
-            # First scan for exact matches
-            for key, val in replacements.items():
-                var = '${%s}' % (key,)
-                if arg == var:
-                    if isinstance(val, string_types):
-                        ret.append(val)
-                    else:
-                        ret.extend(val)
-                    # We break on first hit to avoid double expansion.
-                    break
+            if arg.endswith('${PREUPLOAD_FILES_PREFIXED}'):
+                if arg == '${PREUPLOAD_FILES_PREFIXED}':
+                    assert len(ret) > 1, ('PREUPLOAD_FILES_PREFIXED cannot be '
+                                          'the 1st or 2nd argument')
+                    prev_arg = ret[-1]
+                    ret = ret[0:-1]
+                    for file in self.get('PREUPLOAD_FILES'):
+                        ret.append(prev_arg)
+                        ret.append(file)
+                else:
+                    prefix = arg[0:-len('${PREUPLOAD_FILES_PREFIXED}')]
+                    ret.extend(
+                        prefix + file for file in self.get('PREUPLOAD_FILES'))
             else:
-                # If no exact matches, do an inline replacement.
-                def replace(m):
-                    val = self.get(m.group(1))
-                    if isinstance(val, string_types):
-                        return val
-                    return ' '.join(val)
-                ret.append(re.sub(r'\$\{(%s)\}' % ('|'.join(all_vars),),
-                                  replace, arg))
-
+                # First scan for exact matches
+                for key, val in replacements.items():
+                    var = '${%s}' % (key,)
+                    if arg == var:
+                        if isinstance(val, string_types):
+                            ret.append(val)
+                        else:
+                            ret.extend(val)
+                        # We break on first hit to avoid double expansion.
+                        break
+                else:
+                    # If no exact matches, do an inline replacement.
+                    def replace(m):
+                        val = self.get(m.group(1))
+                        if isinstance(val, string_types):
+                            return val
+                        return ' '.join(val)
+                    ret.append(re.sub(r'\$\{(%s)\}' % ('|'.join(all_vars),),
+                                      replace, arg))
         return ret
 
     @classmethod
@@ -126,6 +141,42 @@ class Placeholders(object):
     def var_BUILD_OS(self):
         """The build OS (see _get_build_os_name for details)."""
         return _get_build_os_name()
+
+
+class ExclusionScope(object):
+    """Exclusion scope for a hook.
+
+    An exclusion scope can be used to determine if a hook has been disabled for
+    a specific project.
+    """
+
+    def __init__(self, scope):
+        """Initialize.
+
+        Args:
+          scope: A list of shell-style wildcards (fnmatch) or regular
+              expression. Regular expressions must start with the ^ character.
+        """
+        self._scope = []
+        for path in scope:
+            if path.startswith('^'):
+                self._scope.append(re.compile(path))
+            else:
+                self._scope.append(path)
+
+    def __contains__(self, proj_dir):
+        """Checks if |proj_dir| matches the excluded paths.
+
+        Args:
+          proj_dir: The relative path of the project.
+        """
+        for exclusion_path in self._scope:
+            if isinstance(exclusion_path, re.Pattern):
+                if exclusion_path.match(proj_dir):
+                    return True
+            elif fnmatch.fnmatch(proj_dir, exclusion_path):
+                return True
+        return False
 
 
 class HookOptions(object):
@@ -186,9 +237,12 @@ class HookOptions(object):
         return self.expand_vars([tool_path])[0]
 
 
+# A callable hook.
+CallableHook = collections.namedtuple('CallableHook', ('name', 'hook', 'scope'))
+
+
 def _run(cmd, **kwargs):
     """Helper command for checks that tend to gather output."""
-    kwargs.setdefault('redirect_stderr', True)
     kwargs.setdefault('combine_stdout_stderr', True)
     kwargs.setdefault('capture_output', True)
     kwargs.setdefault('check', False)
@@ -636,6 +690,61 @@ def check_commit_msg_relnote_field_format(project, commit, desc, _diff,
     return ret
 
 
+RELNOTE_REQUIRED_CURRENT_TXT_MSG = """\
+Commit contains a change to current.txt or public_plus_experimental_current.txt,
+but the commit message does not contain the required `Relnote:` tag.  It must
+match the regex:
+
+    %s
+
+The Relnote: stanza is free-form and should describe what developers need to
+know about your change.  If you are making infrastructure changes, you
+can set the Relnote: stanza to be "N/A" for the commit to not be included
+in release notes.
+
+Some examples:
+
+Relnote: "Added a new API `Class#isBetter` to determine whether or not the
+class is better"
+Relnote: Fixed an issue where the UI would hang on a double tap.
+Relnote: N/A
+
+Check the git history for more examples.
+"""
+
+def check_commit_msg_relnote_for_current_txt(project, commit, desc, diff,
+                                             options=None):
+    """Check changes to current.txt contain the 'Relnote:' stanza."""
+    field = 'Relnote'
+    regex = r'^%s: .+$' % (field,)
+    check_re = re.compile(regex, re.IGNORECASE)
+
+    if options.args():
+        raise ValueError('commit msg %s check takes no options' % (field,))
+
+    filtered = _filter_diff(
+        diff,
+        [r'(^|/)(public_plus_experimental_current|current)\.txt$']
+    )
+    # If the commit does not contain a change to *current.txt, then this repo
+    # hook check no longer applies.
+    if not filtered:
+        return None
+
+    found = []
+    for line in desc.splitlines():
+        if check_re.match(line):
+            found.append(line)
+
+    if not found:
+        error = RELNOTE_REQUIRED_CURRENT_TXT_MSG % (regex)
+    else:
+        return None
+
+    return [rh.results.HookResult('commit msg: "%s:" check' % (field,),
+                                  project, commit, error=error)]
+
+
 def check_cpplint(project, commit, _desc, diff, options=None):
     """Run cpplint."""
     # This list matches what cpplint expects.  We could run on more (like .cxx),
@@ -714,8 +823,38 @@ def check_pylint2(project, commit, desc, diff, options=None):
 def check_pylint3(project, commit, desc, diff, options=None):
     """Run pylint through Python 3."""
     return _check_pylint(project, commit, desc, diff,
-                         extra_args=['--executable-path=pylint3'],
+                         extra_args=['--py3'],
                          options=options)
+
+
+def check_rustfmt(project, commit, _desc, diff, options=None):
+    """Run "rustfmt --check" on diffed rust files"""
+    filtered = _filter_diff(diff, [r'\.rs$'])
+    if not filtered:
+        return None
+
+    rustfmt = options.tool_path('rustfmt')
+    cmd = [rustfmt] + options.args((), filtered)
+    ret = []
+    for d in filtered:
+        data = rh.git.get_file_content(commit, d.file)
+        result = _run(cmd, input=data)
+        # If the parsing failed, stdout will contain enough details on the
+        # location of the error.
+        if result.returncode:
+            ret.append(rh.results.HookResult(
+                'rustfmt', project, commit, error=result.stdout,
+                files=(d.file,)))
+            continue
+        # TODO(b/164111102): rustfmt stable does not support --check on stdin.
+        # If no error is reported, compare stdin with stdout.
+        if data != result.stdout:
+            msg = ('To fix, please run: %s' %
+                   rh.shell.cmd_to_str(cmd + [d.file]))
+            ret.append(rh.results.HookResult(
+                'rustfmt', project, commit, error=msg,
+                files=(d.file,)))
+    return ret
 
 
 def check_xmllint(project, commit, _desc, diff, options=None):
@@ -789,6 +928,8 @@ BUILTIN_HOOKS = {
     'commit_msg_prebuilt_apk_fields': check_commit_msg_prebuilt_apk_fields,
     'commit_msg_test_field': check_commit_msg_test_field,
     'commit_msg_relnote_field_format': check_commit_msg_relnote_field_format,
+    'commit_msg_relnote_for_current_txt':
+        check_commit_msg_relnote_for_current_txt,
     'cpplint': check_cpplint,
     'gofmt': check_gofmt,
     'google_java_format': check_google_java_format,
@@ -796,6 +937,7 @@ BUILTIN_HOOKS = {
     'pylint': check_pylint2,
     'pylint2': check_pylint2,
     'pylint3': check_pylint3,
+    'rustfmt': check_rustfmt,
     'xmllint': check_xmllint,
 }
 
@@ -812,4 +954,5 @@ TOOL_PATHS = {
     'google-java-format': 'google-java-format',
     'google-java-format-diff': 'google-java-format-diff.py',
     'pylint': 'pylint',
+    'rustfmt': 'rustfmt',
 }
