@@ -182,6 +182,28 @@ class PlaceholderTests(unittest.TestCase):
         self.assertEqual(self.replacer.get('BUILD_OS'), m.return_value)
 
 
+class ExclusionScopeTests(unittest.TestCase):
+    """Verify behavior of ExclusionScope class."""
+
+    def testEmpty(self):
+        """Verify the in operator for an empty scope."""
+        scope = rh.hooks.ExclusionScope([])
+        self.assertNotIn('external/*', scope)
+
+    def testGlob(self):
+        """Verify the in operator for a scope using wildcards."""
+        scope = rh.hooks.ExclusionScope(['vendor/*', 'external/*'])
+        self.assertIn('external/tools', scope)
+
+    def testRegex(self):
+        """Verify the in operator for a scope using regular expressions."""
+        scope = rh.hooks.ExclusionScope(['^vendor/(?!google)',
+                                         'external/*'])
+        self.assertIn('vendor/', scope)
+        self.assertNotIn('vendor/google/', scope)
+        self.assertIn('vendor/other/', scope)
+
+
 class HookOptionsTests(unittest.TestCase):
     """Verify behavior of HookOptions object."""
 
@@ -293,7 +315,7 @@ class BuiltinHooksTests(unittest.TestCase):
         """
         # First call should do nothing as there are no files to check.
         ret = func(self.project, 'commit', 'desc', (), options=self.options)
-        self.assertEqual(ret, None)
+        self.assertIsNone(ret)
         self.assertFalse(mock_check.called)
 
         # Second call should include some checks.
@@ -575,11 +597,16 @@ class BuiltinHooksTests(unittest.TestCase):
 
     def test_commit_msg_relnote_for_current_txt(self, _mock_check, _mock_run):
         """Verify the commit_msg_relnote_for_current_txt builtin hook."""
-        diff_without_current_txt = ['foo.txt',
+        diff_without_current_txt = ['bar/foo.txt',
                                     'foo.cpp',
                                     'foo.java',
-                                    'current.java']
+                                    'foo_current.java',
+                                    'foo_current.txt',
+                                    'baz/current.java',
+                                    'baz/foo_current.txt']
         diff_with_current_txt = diff_without_current_txt + ['current.txt']
+        diff_with_subdir_current_txt = \
+            diff_without_current_txt + ['foo/current.txt']
         diff_with_experimental_current_txt = \
             diff_without_current_txt + ['public_plus_experimental_current.txt']
         # Check some good messages.
@@ -611,7 +638,22 @@ class BuiltinHooksTests(unittest.TestCase):
                  'Bug: 1234'),
             ),
             files=diff_with_experimental_current_txt,
-            )
+        )
+        # Check some good messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_for_current_txt,
+            True,
+            (
+                'subj\n\nRelnote: This is a release note\n',
+                'subj\n\nRelnote: This is a release note.\n\nChange-Id: 1234',
+                ('subj\n\nRelnote: This is release note 1 with\n'
+                 'an incorrectly formatted second line.\n\n'
+                 'Relnote: "This is release note 2, and it\n'
+                 'contains a correctly formatted second line."\n'
+                 'Bug: 1234'),
+            ),
+            files=diff_with_subdir_current_txt,
+        )
         # Check some good messages.
         self._test_commit_messages(
             rh.hooks.check_commit_msg_relnote_for_current_txt,
@@ -628,7 +670,7 @@ class BuiltinHooksTests(unittest.TestCase):
                  'Bug: 1234'),
             ),
             files=diff_without_current_txt,
-            )
+        )
         # Check some bad messages.
         self._test_commit_messages(
             rh.hooks.check_commit_msg_relnote_for_current_txt,
@@ -638,7 +680,7 @@ class BuiltinHooksTests(unittest.TestCase):
                 'subj\nBug: 12345\nChange-Id: 1234',
             ),
             files=diff_with_current_txt,
-            )
+        )
         # Check some bad messages.
         self._test_commit_messages(
             rh.hooks.check_commit_msg_relnote_for_current_txt,
@@ -648,7 +690,17 @@ class BuiltinHooksTests(unittest.TestCase):
                 'subj\nBug: 12345\nChange-Id: 1234',
             ),
             files=diff_with_experimental_current_txt,
-            )
+        )
+        # Check some bad messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_for_current_txt,
+            False,
+            (
+                'subj'
+                'subj\nBug: 12345\nChange-Id: 1234',
+            ),
+            files=diff_with_subdir_current_txt,
+        )
 
     def test_cpplint(self, mock_check, _mock_run):
         """Verify the cpplint builtin hook."""
@@ -660,21 +712,21 @@ class BuiltinHooksTests(unittest.TestCase):
         # First call should do nothing as there are no files to check.
         ret = rh.hooks.check_gofmt(
             self.project, 'commit', 'desc', (), options=self.options)
-        self.assertEqual(ret, None)
+        self.assertIsNone(ret)
         self.assertFalse(mock_check.called)
 
         # Second call will have some results.
         diff = [rh.git.RawDiffEntry(file='foo.go')]
         ret = rh.hooks.check_gofmt(
             self.project, 'commit', 'desc', diff, options=self.options)
-        self.assertNotEqual(ret, None)
+        self.assertIsNotNone(ret)
 
     def test_jsonlint(self, mock_check, _mock_run):
         """Verify the jsonlint builtin hook."""
         # First call should do nothing as there are no files to check.
         ret = rh.hooks.check_json(
             self.project, 'commit', 'desc', (), options=self.options)
-        self.assertEqual(ret, None)
+        self.assertIsNone(ret)
         self.assertFalse(mock_check.called)
 
         # TODO: Actually pass some valid/invalid json data down.
@@ -695,8 +747,17 @@ class BuiltinHooksTests(unittest.TestCase):
                                ('foo.py',))
 
     def test_rustfmt(self, mock_check, _mock_run):
-        self._test_file_filter(mock_check, rh.hooks.check_rustfmt,
-                               ('foo.rs',))
+        # First call should do nothing as there are no files to check.
+        ret = rh.hooks.check_rustfmt(
+            self.project, 'commit', 'desc', (), options=self.options)
+        self.assertEqual(ret, None)
+        self.assertFalse(mock_check.called)
+
+        # Second call will have some results.
+        diff = [rh.git.RawDiffEntry(file='lib.rs')]
+        ret = rh.hooks.check_rustfmt(
+            self.project, 'commit', 'desc', diff, options=self.options)
+        self.assertNotEqual(ret, None)
 
     def test_xmllint(self, mock_check, _mock_run):
         """Verify the xmllint builtin hook."""
