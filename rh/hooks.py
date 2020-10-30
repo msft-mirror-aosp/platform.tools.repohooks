@@ -171,7 +171,7 @@ class ExclusionScope(object):
           proj_dir: The relative path of the project.
         """
         for exclusion_path in self._scope:
-            if isinstance(exclusion_path, re.Pattern):
+            if hasattr(exclusion_path, 'match'):
                 if exclusion_path.match(proj_dir):
                     return True
             elif fnmatch.fnmatch(proj_dir, exclusion_path):
@@ -771,9 +771,10 @@ def check_gofmt(project, commit, _desc, diff, options=None):
         data = rh.git.get_file_content(commit, d.file)
         result = _run(cmd, input=data)
         if result.stdout:
+            fixup_func = _fixup_func_caller([gofmt, '-w', d.file])
             ret.append(rh.results.HookResult(
                 'gofmt', project, commit, error=result.stdout,
-                files=(d.file,)))
+                files=(d.file,), fixup_func=fixup_func))
     return ret
 
 
