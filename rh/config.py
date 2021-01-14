@@ -1,4 +1,3 @@
-# -*- coding:utf-8 -*-
 # Copyright 2016 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,8 +14,7 @@
 
 """Manage various config files."""
 
-from __future__ import print_function
-
+import configparser
 import functools
 import itertools
 import os
@@ -31,7 +29,6 @@ del _path
 # pylint: disable=wrong-import-position
 import rh.hooks
 import rh.shell
-from rh.sixish import configparser
 
 
 class Error(Exception):
