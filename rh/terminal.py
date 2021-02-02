@@ -1,4 +1,3 @@
-# -*- coding:utf-8 -*-
 # Copyright 2016 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,8 +16,6 @@
 
 This module handles terminal interaction including ANSI color codes.
 """
-
-from __future__ import print_function
 
 import os
 import sys
@@ -142,11 +139,12 @@ def print_status_line(line, print_newline=False):
 def get_input(prompt):
     """Python 2/3 glue for raw_input/input differences."""
     try:
+        # pylint: disable=raw_input-builtin
         return raw_input(prompt)
     except NameError:
         # Python 3 renamed raw_input() to input(), which is safe to call since
         # it does not evaluate the input.
-        # pylint: disable=bad-builtin
+        # pylint: disable=bad-builtin,input-builtin
         return input(prompt)
 
 

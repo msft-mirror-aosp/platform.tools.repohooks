@@ -1,5 +1,4 @@
-#!/usr/bin/python
-# -*- coding:utf-8 -*-
+#!/usr/bin/env python3
 # Copyright 2016 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,8 +14,6 @@
 # limitations under the License.
 
 """Unittests for the shell module."""
-
-from __future__ import print_function
 
 import difflib
 import os
@@ -49,7 +46,7 @@ class DiffTestCase(unittest.TestCase):
 
     def _testData(self, functor, tests, check_type=True):
         """Process a dict of test data."""
-        for test_output, test_input in tests.iteritems():
+        for test_output, test_input in tests.items():
             result = functor(test_input)
             self._assertEqual(functor.__name__, test_input, test_output, result)
 
@@ -68,8 +65,8 @@ class ShellQuoteTest(DiffTestCase):
         # Dict of expected output strings to input lists.
         tests_quote = {
             "''": '',
-            'a': unicode('a'),
-            "'a b c'": unicode('a b c'),
+            'a': u'a',
+            "'a b c'": u'a b c',
             "'a\tb'": 'a\tb',
             "'/a$file'": '/a$file',
             "'/a#file'": '/a#file',
@@ -95,7 +92,7 @@ class ShellQuoteTest(DiffTestCase):
 
         # Test that the operations are reversible.
         self._testData(aux, {k: k for k in tests_quote.values()}, False)
-        self._testData(aux, {k: k for k in tests_quote.keys()}, False)
+        self._testData(aux, {k: k for k in tests_quote}, False)
 
 
 class CmdToStrTest(DiffTestCase):
@@ -108,7 +105,7 @@ class CmdToStrTest(DiffTestCase):
             r"'a b' c": ['a b', 'c'],
             r'''a "b'c"''': ['a', "b'c"],
             r'''a "/'\$b" 'a b c' "xy'z"''':
-                [unicode('a'), "/'$b", 'a b c', "xy'z"],
+                [u'a', "/'$b", 'a b c', "xy'z"],
             '': [],
         }
         self._testData(rh.shell.cmd_to_str, tests)
