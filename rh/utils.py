@@ -1,4 +1,3 @@
-# -*- coding:utf-8 -*-
 # Copyright 2016 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,8 +13,6 @@
 # limitations under the License.
 
 """Various utility functions."""
-
-from __future__ import print_function
 
 import errno
 import functools
@@ -34,7 +31,6 @@ del _path
 # pylint: disable=wrong-import-position
 import rh.shell
 import rh.signals
-from rh.sixish import string_types
 
 
 def timedelta_str(delta):
@@ -187,12 +183,8 @@ def _kill_child_process(proc, int_timeout, kill_timeout, cmd, original_handler,
             print('Ignoring unhandled exception in _kill_child_process: %s' % e,
                   file=sys.stderr)
 
-        # Ensure our child process has been reaped.
-        kwargs = {}
-        if sys.version_info.major >= 3:
-            # ... but don't wait forever.
-            kwargs['timeout'] = 60
-        proc.wait_lock_breaker(**kwargs)
+        # Ensure our child process has been reaped, but don't wait forever.
+        proc.wait_lock_breaker(timeout=60)
 
     if not rh.signals.relay_signal(original_handler, signum, frame):
         # Mock up our own, matching exit code for signaling.
@@ -314,13 +306,8 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
     kill_timeout = float(kill_timeout)
 
     def _get_tempfile():
-        kwargs = {}
-        if sys.version_info.major < 3:
-            kwargs['bufsize'] = 0
-        else:
-            kwargs['buffering'] = 0
         try:
-            return tempfile.TemporaryFile(**kwargs)
+            return tempfile.TemporaryFile(buffering=0)
         except EnvironmentError as e:
             if e.errno != errno.ENOENT:
                 raise
@@ -329,7 +316,7 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
             # issue in this particular case since our usage gurantees deletion,
             # and since this is primarily triggered during hard cgroups
             # shutdown.
-            return tempfile.TemporaryFile(dir='/tmp', **kwargs)
+            return tempfile.TemporaryFile(dir='/tmp', buffering=0)
 
     # Modify defaults based on parameters.
     # Note that tempfiles must be unbuffered else attempts to read
@@ -354,14 +341,14 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
 
     # If input is a string, we'll create a pipe and send it through that.
     # Otherwise we assume it's a file object that can be read from directly.
-    if isinstance(input, string_types):
+    if isinstance(input, str):
         stdin = subprocess.PIPE
         input = input.encode('utf-8')
     elif input is not None:
         stdin = input
         input = None
 
-    if isinstance(cmd, string_types):
+    if isinstance(cmd, str):
         if not shell:
             raise Exception('Cannot run a string command without a shell')
         cmd = ['/bin/bash', '-c', cmd]
