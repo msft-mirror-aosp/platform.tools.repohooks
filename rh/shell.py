@@ -1,4 +1,3 @@
-# -*- coding:utf-8 -*-
 # Copyright 2016 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,8 +14,6 @@
 
 """Functions for working with shell code."""
 
-from __future__ import print_function
-
 import os
 import sys
 
@@ -24,9 +21,6 @@ _path = os.path.realpath(__file__ + '/../..')
 if sys.path[0] != _path:
     sys.path.insert(0, _path)
 del _path
-
-# pylint: disable=wrong-import-position
-from rh.sixish import string_types
 
 
 # For use by ShellQuote.  Match all characters that the shell might treat
@@ -156,11 +150,11 @@ def boolean_shell_value(sval, default):
     if sval is None:
         return default
 
-    if isinstance(sval, string_types):
+    if isinstance(sval, str):
         s = sval.lower()
         if s in ('yes', 'y', '1', 'true'):
             return True
-        elif s in ('no', 'n', '0', 'false'):
+        if s in ('no', 'n', '0', 'false'):
             return False
 
     raise ValueError('Could not decode as a boolean value: %r' % (sval,))
