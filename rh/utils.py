@@ -1,4 +1,3 @@
-# -*- coding:utf-8 -*-
 # Copyright 2016 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,8 +13,6 @@
 # limitations under the License.
 
 """Various utility functions."""
-
-from __future__ import print_function
 
 import errno
 import functools
@@ -34,7 +31,6 @@ del _path
 # pylint: disable=wrong-import-position
 import rh.shell
 import rh.signals
-from rh.sixish import string_types
 
 
 def timedelta_str(delta):
@@ -152,57 +148,6 @@ class TerminateCalledProcessError(CalledProcessError):
     """
 
 
-def sudo_run(cmd, user='root', **kwargs):
-    """Run a command via sudo.
-
-    Client code must use this rather than coming up with their own RunCommand
-    invocation that jams sudo in- this function is used to enforce certain
-    rules in our code about sudo usage, and as a potential auditing point.
-
-    Args:
-      cmd: The command to run.  See RunCommand for rules of this argument-
-          SudoRunCommand purely prefixes it with sudo.
-      user: The user to run the command as.
-      kwargs: See RunCommand options, it's a direct pass thru to it.
-          Note that this supports a 'strict' keyword that defaults to True.
-          If set to False, it'll suppress strict sudo behavior.
-
-    Returns:
-      See RunCommand documentation.
-
-    Raises:
-      This function may immediately raise CalledProcessError if we're operating
-      in a strict sudo context and the API is being misused.
-      Barring that, see RunCommand's documentation- it can raise the same things
-      RunCommand does.
-    """
-    # We don't use this anywhere, so it's easier to not bother supporting it.
-    assert not isinstance(cmd, string_types), 'shell commands not supported'
-    assert 'shell' not in kwargs, 'shell=True is not supported'
-
-    sudo_cmd = ['sudo']
-
-    if user == 'root' and os.geteuid() == 0:
-        return run(cmd, **kwargs)
-
-    if user != 'root':
-        sudo_cmd += ['-u', user]
-
-    # Pass these values down into the sudo environment, since sudo will
-    # just strip them normally.
-    extra_env = kwargs.pop('extra_env', None)
-    extra_env = {} if extra_env is None else extra_env.copy()
-
-    sudo_cmd.extend('%s=%s' % (k, v) for k, v in extra_env.items())
-
-    # Finally, block people from passing options to sudo.
-    sudo_cmd.append('--')
-
-    sudo_cmd.extend(cmd)
-
-    return run(sudo_cmd, **kwargs)
-
-
 def _kill_child_process(proc, int_timeout, kill_timeout, cmd, original_handler,
                         signum, frame):
     """Used as a signal handler by RunCommand.
@@ -238,12 +183,8 @@ def _kill_child_process(proc, int_timeout, kill_timeout, cmd, original_handler,
             print('Ignoring unhandled exception in _kill_child_process: %s' % e,
                   file=sys.stderr)
 
-        # Ensure our child process has been reaped.
-        kwargs = {}
-        if sys.version_info.major >= 3:
-            # ... but don't wait forever.
-            kwargs['timeout'] = 60
-        proc.wait_lock_breaker(**kwargs)
+        # Ensure our child process has been reaped, but don't wait forever.
+        proc.wait_lock_breaker(timeout=60)
 
     if not rh.signals.relay_signal(original_handler, signum, frame):
         # Mock up our own, matching exit code for signaling.
@@ -277,21 +218,7 @@ class _Popen(subprocess.Popen):
         try:
             os.kill(self.pid, signum)
         except EnvironmentError as e:
-            if e.errno == errno.EPERM:
-                # Kill returns either 0 (signal delivered), or 1 (signal wasn't
-                # delivered).  This isn't particularly informative, but we still
-                # need that info to decide what to do, thus check=False.
-                ret = sudo_run(['kill', '-%i' % signum, str(self.pid)],
-                               redirect_stdout=True,
-                               redirect_stderr=True, check=False)
-                if ret.returncode == 1:
-                    # The kill binary doesn't distinguish between permission
-                    # denied and the pid is missing.  Denied can only occur
-                    # under weird grsec/selinux policies.  We ignore that
-                    # potential and just assume the pid was already dead and
-                    # try to reap it.
-                    self.poll()
-            elif e.errno == errno.ESRCH:
+            if e.errno == errno.ESRCH:
                 # Since we know the process is dead, reap it now.
                 # Normally Popen would throw this error- we suppress it since
                 # frankly that's a misfeature and we're already overriding
@@ -369,8 +296,8 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
         redirect_stdout, redirect_stderr = True, True
 
     # Set default for variables.
-    stdout = None
-    stderr = None
+    popen_stdout = None
+    popen_stderr = None
     stdin = None
     result = CompletedProcess()
 
@@ -379,13 +306,8 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
     kill_timeout = float(kill_timeout)
 
     def _get_tempfile():
-        kwargs = {}
-        if sys.version_info.major < 3:
-            kwargs['bufsize'] = 0
-        else:
-            kwargs['buffering'] = 0
         try:
-            return tempfile.TemporaryFile(**kwargs)
+            return tempfile.TemporaryFile(buffering=0)
         except EnvironmentError as e:
             if e.errno != errno.ENOENT:
                 raise
@@ -394,7 +316,7 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
             # issue in this particular case since our usage gurantees deletion,
             # and since this is primarily triggered during hard cgroups
             # shutdown.
-            return tempfile.TemporaryFile(dir='/tmp', **kwargs)
+            return tempfile.TemporaryFile(dir='/tmp', buffering=0)
 
     # Modify defaults based on parameters.
     # Note that tempfiles must be unbuffered else attempts to read
@@ -403,30 +325,30 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
     # The Popen API accepts either an int or a file handle for stdout/stderr.
     # pylint: disable=redefined-variable-type
     if redirect_stdout:
-        stdout = _get_tempfile()
+        popen_stdout = _get_tempfile()
 
     if combine_stdout_stderr:
-        stderr = subprocess.STDOUT
+        popen_stderr = subprocess.STDOUT
     elif redirect_stderr:
-        stderr = _get_tempfile()
+        popen_stderr = _get_tempfile()
     # pylint: enable=redefined-variable-type
 
     # If subprocesses have direct access to stdout or stderr, they can bypass
     # our buffers, so we need to flush to ensure that output is not interleaved.
-    if stdout is None or stderr is None:
+    if popen_stdout is None or popen_stderr is None:
         sys.stdout.flush()
         sys.stderr.flush()
 
     # If input is a string, we'll create a pipe and send it through that.
     # Otherwise we assume it's a file object that can be read from directly.
-    if isinstance(input, string_types):
+    if isinstance(input, str):
         stdin = subprocess.PIPE
         input = input.encode('utf-8')
     elif input is not None:
         stdin = input
         input = None
 
-    if isinstance(cmd, string_types):
+    if isinstance(cmd, str):
         if not shell:
             raise Exception('Cannot run a string command without a shell')
         cmd = ['/bin/bash', '-c', cmd]
@@ -443,8 +365,8 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
 
     proc = None
     try:
-        proc = _Popen(cmd, cwd=cwd, stdin=stdin, stdout=stdout,
-                      stderr=stderr, shell=False, env=env,
+        proc = _Popen(cmd, cwd=cwd, stdin=stdin, stdout=popen_stdout,
+                      stderr=popen_stderr, shell=False, env=env,
                       close_fds=close_fds)
 
         old_sigint = signal.getsignal(signal.SIGINT)
@@ -463,19 +385,19 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
             signal.signal(signal.SIGINT, old_sigint)
             signal.signal(signal.SIGTERM, old_sigterm)
 
-            if stdout:
+            if popen_stdout:
                 # The linter is confused by how stdout is a file & an int.
                 # pylint: disable=maybe-no-member,no-member
-                stdout.seek(0)
-                result.stdout = stdout.read()
-                stdout.close()
+                popen_stdout.seek(0)
+                result.stdout = popen_stdout.read()
+                popen_stdout.close()
 
-            if stderr and stderr != subprocess.STDOUT:
+            if popen_stderr and popen_stderr != subprocess.STDOUT:
                 # The linter is confused by how stderr is a file & an int.
                 # pylint: disable=maybe-no-member,no-member
-                stderr.seek(0)
-                result.stderr = stderr.read()
-                stderr.close()
+                popen_stderr.seek(0)
+                result.stderr = popen_stderr.read()
+                popen_stderr.close()
 
         result.returncode = proc.returncode
 
@@ -491,7 +413,8 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
         if e.errno == errno.EACCES:
             estr += '; does the program need `chmod a+x`?'
         if not check:
-            result = CompletedProcess(args=cmd, stderr=estr, returncode=255)
+            result = CompletedProcess(
+                args=cmd, stderr=estr.encode('utf-8'), returncode=255)
         else:
             raise CalledProcessError(
                 result.returncode, result.cmd, stdout=result.stdout,
