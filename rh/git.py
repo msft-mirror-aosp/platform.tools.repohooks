@@ -1,4 +1,3 @@
-# -*- coding:utf-8 -*-
 # Copyright 2016 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,8 +13,6 @@
 # limitations under the License.
 
 """Git helper functions."""
-
-from __future__ import print_function
 
 import os
 import re
@@ -34,13 +31,13 @@ def get_upstream_remote():
     """Returns the current upstream remote name."""
     # First get the current branch name.
     cmd = ['git', 'rev-parse', '--abbrev-ref', 'HEAD']
-    result = rh.utils.run_command(cmd, capture_output=True)
-    branch = result.output.strip()
+    result = rh.utils.run(cmd, capture_output=True)
+    branch = result.stdout.strip()
 
     # Then get the remote associated with this branch.
     cmd = ['git', 'config', 'branch.%s.remote' % branch]
-    result = rh.utils.run_command(cmd, capture_output=True)
-    return result.output.strip()
+    result = rh.utils.run(cmd, capture_output=True)
+    return result.stdout.strip()
 
 
 def get_upstream_branch():
@@ -50,21 +47,21 @@ def get_upstream_branch():
       Error if there is no tracking branch
     """
     cmd = ['git', 'symbolic-ref', 'HEAD']
-    result = rh.utils.run_command(cmd, capture_output=True)
-    current_branch = result.output.strip().replace('refs/heads/', '')
+    result = rh.utils.run(cmd, capture_output=True)
+    current_branch = result.stdout.strip().replace('refs/heads/', '')
     if not current_branch:
         raise ValueError('Need to be on a tracking branch')
 
     cfg_option = 'branch.' + current_branch + '.%s'
     cmd = ['git', 'config', cfg_option % 'merge']
-    result = rh.utils.run_command(cmd, capture_output=True)
-    full_upstream = result.output.strip()
+    result = rh.utils.run(cmd, capture_output=True)
+    full_upstream = result.stdout.strip()
     # If remote is not fully qualified, add an implicit namespace.
     if '/' not in full_upstream:
         full_upstream = 'refs/heads/%s' % full_upstream
     cmd = ['git', 'config', cfg_option % 'remote']
-    result = rh.utils.run_command(cmd, capture_output=True)
-    remote = result.output.strip()
+    result = rh.utils.run(cmd, capture_output=True)
+    remote = result.stdout.strip()
     if not remote or not full_upstream:
         raise ValueError('Need to be on a tracking branch')
 
@@ -74,8 +71,8 @@ def get_upstream_branch():
 def get_commit_for_ref(ref):
     """Returns the latest commit for this ref."""
     cmd = ['git', 'rev-parse', ref]
-    result = rh.utils.run_command(cmd, capture_output=True)
-    return result.output.strip()
+    result = rh.utils.run(cmd, capture_output=True)
+    return result.stdout.strip()
 
 
 def get_remote_revision(ref, remote):
@@ -89,19 +86,7 @@ def get_remote_revision(ref, remote):
 def get_patch(commit):
     """Returns the patch for this commit."""
     cmd = ['git', 'format-patch', '--stdout', '-1', commit]
-    return rh.utils.run_command(cmd, capture_output=True).output
-
-
-def _try_utf8_decode(data):
-    """Attempts to decode a string as UTF-8.
-
-    Returns:
-      The decoded Unicode object, or the original string if parsing fails.
-    """
-    try:
-        return unicode(data, 'utf-8', 'strict')
-    except UnicodeDecodeError:
-        return data
+    return rh.utils.run(cmd, capture_output=True).stdout
 
 
 def get_file_content(commit, path):
@@ -115,14 +100,25 @@ def get_file_content(commit, path):
     content will not have any newlines.
     """
     cmd = ['git', 'show', '%s:%s' % (commit, path)]
-    return rh.utils.run_command(cmd, capture_output=True).output
+    return rh.utils.run(cmd, capture_output=True).stdout
 
 
-# RawDiffEntry represents a line of raw formatted git diff output.
-RawDiffEntry = rh.utils.collection(
-    'RawDiffEntry',
-    src_mode=0, dst_mode=0, src_sha=None, dst_sha=None,
-    status=None, score=None, src_file=None, dst_file=None, file=None)
+class RawDiffEntry(object):
+    """Representation of a line from raw formatted git diff output."""
+
+    # pylint: disable=redefined-builtin
+    def __init__(self, src_mode=0, dst_mode=0, src_sha=None, dst_sha=None,
+                 status=None, score=None, src_file=None, dst_file=None,
+                 file=None):
+        self.src_mode = src_mode
+        self.dst_mode = dst_mode
+        self.src_sha = src_sha
+        self.dst_sha = dst_sha
+        self.status = status
+        self.score = score
+        self.src_file = src_file
+        self.dst_file = dst_file
+        self.file = file
 
 
 # This regular expression pulls apart a line of raw formatted git diff output.
@@ -146,17 +142,18 @@ def raw_diff(path, target):
     entries = []
 
     cmd = ['git', 'diff', '--no-ext-diff', '-M', '--raw', target]
-    diff = rh.utils.run_command(cmd, cwd=path, capture_output=True).output
+    diff = rh.utils.run(cmd, cwd=path, capture_output=True).stdout
     diff_lines = diff.strip().splitlines()
     for line in diff_lines:
         match = DIFF_RE.match(line)
         if not match:
             raise ValueError('Failed to parse diff output: %s' % line)
-        diff = RawDiffEntry(**match.groupdict())
-        diff.src_mode = int(diff.src_mode)
-        diff.dst_mode = int(diff.dst_mode)
-        diff.file = diff.dst_file if diff.dst_file else diff.src_file
-        entries.append(diff)
+        rawdiff = RawDiffEntry(**match.groupdict())
+        rawdiff.src_mode = int(rawdiff.src_mode)
+        rawdiff.dst_mode = int(rawdiff.dst_mode)
+        rawdiff.file = (rawdiff.dst_file
+                        if rawdiff.dst_file else rawdiff.src_file)
+        entries.append(rawdiff)
 
     return entries
 
@@ -167,21 +164,21 @@ def get_affected_files(commit):
     Returns:
       A list of modified/added (and perhaps deleted) files
     """
-    return raw_diff(os.getcwd(), '%s^!' % commit)
+    return raw_diff(os.getcwd(), '%s^-' % commit)
 
 
 def get_commits(ignore_merged_commits=False):
     """Returns a list of commits for this review."""
-    cmd = ['git', 'log', '%s..' % get_upstream_branch(), '--format=%H']
+    cmd = ['git', 'rev-list', '%s..' % get_upstream_branch()]
     if ignore_merged_commits:
         cmd.append('--first-parent')
-    return rh.utils.run_command(cmd, capture_output=True).output.split()
+    return rh.utils.run(cmd, capture_output=True).stdout.split()
 
 
 def get_commit_desc(commit):
     """Returns the full commit message of a commit."""
-    cmd = ['git', 'log', '--format=%B', commit + '^!']
-    return rh.utils.run_command(cmd, capture_output=True).output
+    cmd = ['git', 'diff-tree', '-s', '--always', '--format=%B', commit]
+    return rh.utils.run(cmd, capture_output=True).stdout
 
 
 def find_repo_root(path=None):
@@ -197,3 +194,10 @@ def find_repo_root(path=None):
             raise ValueError('Could not locate .repo in %s' % orig_path)
 
     return path
+
+
+def is_git_repository(path):
+    """Returns True if the path is a valid git repository."""
+    cmd = ['git', 'rev-parse', '--resolve-git-dir', os.path.join(path, '.git')]
+    result = rh.utils.run(cmd, capture_output=True, check=False)
+    return result.returncode == 0
