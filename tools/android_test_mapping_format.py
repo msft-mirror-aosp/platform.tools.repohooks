@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding:utf-8 -*-
 # Copyright 2018 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,8 +21,6 @@ The goal of this script is to validate the format of TEST_MAPPING files:
 3. Each import must have only one key `path` and one value for the path to
    import TEST_MAPPING files.
 """
-
-from __future__ import print_function
 
 import argparse
 import json
@@ -54,13 +51,6 @@ TEST_MAPPING_URL = (
 
 # Pattern used to identify line-level '//'-format comment in TEST_MAPPING file.
 _COMMENTS_RE = re.compile(r'^\s*//')
-
-
-if sys.version_info.major < 3:
-    # pylint: disable=basestring-builtin,undefined-variable
-    string_types = basestring
-else:
-    string_types = str
 
 
 class Error(Exception):
@@ -128,14 +118,14 @@ def _validate_test(test, test_mapping_file):
             'Failed test config: %s' % (test_mapping_file, test))
     preferred_targets = test.get(PREFERRED_TARGETS, [])
     if (not isinstance(preferred_targets, list) or
-            any(not isinstance(t, string_types) for t in preferred_targets)):
+            any(not isinstance(t, str) for t in preferred_targets)):
         raise InvalidTestMappingError(
             'Invalid test config in test mapping file %s. `preferred_targets` '
             'setting in test config can only be a list of strings. Failed test '
             'config: %s' % (test_mapping_file, test))
     file_patterns = test.get(FILE_PATTERNS, [])
     if (not isinstance(file_patterns, list) or
-            any(not isinstance(p, string_types) for p in file_patterns)):
+            any(not isinstance(p, str) for p in file_patterns)):
         raise InvalidTestMappingError(
             'Invalid test config in test mapping file %s. `file_patterns` '
             'setting in test config can only be a list of strings. Failed test '

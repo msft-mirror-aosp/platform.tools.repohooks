@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding:utf-8 -*-
 # Copyright 2016 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,8 +14,6 @@
 # limitations under the License.
 
 """Unittests for the hooks module."""
-
-from __future__ import print_function
 
 import os
 import sys
@@ -823,6 +820,20 @@ class BuiltinHooksTests(unittest.TestCase):
         # Second call will have some results.
         diff = [rh.git.RawDiffEntry(file='TEST_MAPPING')]
         ret = rh.hooks.check_android_test_mapping(
+            self.project, 'commit', 'desc', diff, options=self.options)
+        self.assertIsNotNone(ret)
+
+    def test_aidl_format(self, mock_check, _mock_run):
+        """Verify the aidl_format builtin hook."""
+        # First call should do nothing as there are no files to check.
+        ret = rh.hooks.check_aidl_format(
+            self.project, 'commit', 'desc', (), options=self.options)
+        self.assertIsNone(ret)
+        self.assertFalse(mock_check.called)
+
+        # Second call will have some results.
+        diff = [rh.git.RawDiffEntry(file='IFoo.go')]
+        ret = rh.hooks.check_gofmt(
             self.project, 'commit', 'desc', diff, options=self.options)
         self.assertIsNotNone(ret)
 
