@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 #
 #===- google-java-format-diff.py - google-java-format Diff Reformatter -----===#
 #
@@ -131,15 +131,15 @@ def main():
       sys.exit(p.returncode);
 
     if not args.i:
-      # Open in binary mode to prevent Python from messing with line endings.
-      with open(filename, 'rb') as f:
+      # `newline=''` prevents Python from translating line endings.
+      with open(filename, 'r', newline='') as f:
         code = f.readlines()
       formatted_code = StringIO(stdout.decode('utf-8')).readlines()
       diff = difflib.unified_diff(code, formatted_code,
                                   filename, filename,
                                   '(before formatting)', '(after formatting)')
-      diff_string = string.join(diff, '')
-      if len(diff_string) > 0:
+      diff_string = ''.join(diff)
+      if diff_string:
         sys.stdout.write(diff_string)
 
 if __name__ == '__main__':
