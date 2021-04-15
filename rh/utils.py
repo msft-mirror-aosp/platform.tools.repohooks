@@ -66,7 +66,7 @@ class CompletedProcess(getattr(subprocess, 'CompletedProcess', object)):
             self.stderr = stderr
             self.returncode = returncode
         else:
-            super(CompletedProcess, self).__init__(
+            super().__init__(
                 args=args, returncode=returncode, stdout=stdout, stderr=stderr)
 
     @property
@@ -99,7 +99,7 @@ class CalledProcessError(subprocess.CalledProcessError):
             raise TypeError('exception must be an exception instance; got %r'
                             % (exception,))
 
-        super(CalledProcessError, self).__init__(returncode, cmd, stdout)
+        super().__init__(returncode, cmd, stdout)
         # The parent class will set |output|, so delete it.
         del self.output
         # TODO(vapier): When we're Python 3-only, delete this assignment as the
@@ -431,7 +431,7 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
             raise CalledProcessError(
                 result.returncode, result.cmd, msg=estr, exception=e,
                 stdout=ensure_text(result.stdout),
-                stderr=ensure_text(result.stderr))
+                stderr=ensure_text(result.stderr)) from e
     finally:
         if proc is not None:
             # Ensure the process is dead.
