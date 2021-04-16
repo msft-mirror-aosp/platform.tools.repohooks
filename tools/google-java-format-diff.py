@@ -24,16 +24,14 @@ Example usage for git/svn users:
 
 import argparse
 import difflib
+import io
 import os
 import platform
 import re
-import six
 import string
 import subprocess
 import sys
 from distutils.spawn import find_executable
-from io import StringIO
-from six import StringIO
 
 def find_executable_portable(executable):
   if platform.system() == 'Windows':
@@ -106,7 +104,7 @@ def main():
           ['-lines', str(start_line) + ':' + str(end_line)])
 
   # Reformat files containing changes in place.
-  for filename, lines in six.iteritems(lines_by_file):
+  for filename, lines in lines_by_file.items():
     if args.i and args.verbose:
       print('Formatting %s' % filename)
     command = [binary]
@@ -134,7 +132,7 @@ def main():
       # `newline=''` prevents Python from translating line endings.
       with open(filename, 'r', newline='') as f:
         code = f.readlines()
-      formatted_code = StringIO(stdout.decode('utf-8')).readlines()
+      formatted_code = io.StringIO(stdout.decode('utf-8')).readlines()
       diff = difflib.unified_diff(code, formatted_code,
                                   filename, filename,
                                   '(before formatting)', '(after formatting)')
