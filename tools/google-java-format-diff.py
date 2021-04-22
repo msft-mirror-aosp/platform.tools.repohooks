@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#!/usr/bin/env python3
 #
 #===- google-java-format-diff.py - google-java-format Diff Reformatter -----===#
 #
@@ -24,16 +24,14 @@ Example usage for git/svn users:
 
 import argparse
 import difflib
+import io
 import os
 import platform
 import re
-import six
 import string
 import subprocess
 import sys
 from distutils.spawn import find_executable
-from io import StringIO
-from six import StringIO
 
 def find_executable_portable(executable):
   if platform.system() == 'Windows':
@@ -106,7 +104,7 @@ def main():
           ['-lines', str(start_line) + ':' + str(end_line)])
 
   # Reformat files containing changes in place.
-  for filename, lines in six.iteritems(lines_by_file):
+  for filename, lines in lines_by_file.items():
     if args.i and args.verbose:
       print('Formatting %s' % filename)
     command = [binary]
@@ -131,15 +129,15 @@ def main():
       sys.exit(p.returncode);
 
     if not args.i:
-      # Open in binary mode to prevent Python from messing with line endings.
-      with open(filename, 'rb') as f:
+      # `newline=''` prevents Python from translating line endings.
+      with open(filename, 'r', newline='') as f:
         code = f.readlines()
-      formatted_code = StringIO(stdout.decode('utf-8')).readlines()
+      formatted_code = io.StringIO(stdout.decode('utf-8')).readlines()
       diff = difflib.unified_diff(code, formatted_code,
                                   filename, filename,
                                   '(before formatting)', '(after formatting)')
-      diff_string = string.join(diff, '')
-      if len(diff_string) > 0:
+      diff_string = ''.join(diff)
+      if diff_string:
         sys.stdout.write(diff_string)
 
 if __name__ == '__main__':
