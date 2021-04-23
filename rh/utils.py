@@ -417,9 +417,9 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
                 stderr=ensure_text(result.stderr))
     except OSError as e:
         # Avoid leaking tempfiles.
-        if popen_stdout is not None:
+        if popen_stdout is not None and not isinstance(popen_stdout, int):
             popen_stdout.close()
-        if popen_stderr is not None:
+        if popen_stderr is not None and not isinstance(popen_stderr, int):
             popen_stderr.close()
 
         estr = str(e)
