@@ -206,6 +206,15 @@ class RunCommandTests(unittest.TestCase):
         self.assertNotEqual(0, ret.returncode)
         self.assertIn('a/b/c/d', str(ret))
 
+    def test_check_false_missing_prog_combined_output(self):
+        """Verify handling of combined output capturing w/missing progs."""
+        with self.assertRaises(rh.utils.CalledProcessError) as e:
+            rh.utils.run(['./!~a/b/c/d/'], check=True,
+                         combine_stdout_stderr=True)
+        err = e.exception
+        self.assertNotEqual(0, err.returncode)
+        self.assertIn('a/b/c/d', str(err))
+
 
 if __name__ == '__main__':
     unittest.main()
