@@ -66,7 +66,7 @@ class CompletedProcess(getattr(subprocess, 'CompletedProcess', object)):
             self.stderr = stderr
             self.returncode = returncode
         else:
-            super(CompletedProcess, self).__init__(
+            super().__init__(
                 args=args, returncode=returncode, stdout=stdout, stderr=stderr)
 
     @property
@@ -99,7 +99,7 @@ class CalledProcessError(subprocess.CalledProcessError):
             raise TypeError('exception must be an exception instance; got %r'
                             % (exception,))
 
-        super(CalledProcessError, self).__init__(returncode, cmd, stdout)
+        super().__init__(returncode, cmd, stdout)
         # The parent class will set |output|, so delete it.
         del self.output
         # TODO(vapier): When we're Python 3-only, delete this assignment as the
@@ -361,6 +361,12 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
     env = env.copy() if env is not None else os.environ.copy()
     env.update(extra_env if extra_env else {})
 
+    def ensure_text(s):
+        """Make sure |s| is a string if it's bytes."""
+        if isinstance(s, bytes):
+            s = s.decode('utf-8', 'replace')
+        return s
+
     result.args = cmd
 
     proc = None
@@ -406,19 +412,26 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
             if extra_env:
                 msg += ', extra env=%s' % extra_env
             raise CalledProcessError(
-                result.returncode, result.cmd, stdout=result.stdout,
-                stderr=result.stderr, msg=msg)
+                result.returncode, result.cmd, msg=msg,
+                stdout=ensure_text(result.stdout),
+                stderr=ensure_text(result.stderr))
     except OSError as e:
+        # Avoid leaking tempfiles.
+        if popen_stdout is not None and not isinstance(popen_stdout, int):
+            popen_stdout.close()
+        if popen_stderr is not None and not isinstance(popen_stderr, int):
+            popen_stderr.close()
+
         estr = str(e)
         if e.errno == errno.EACCES:
             estr += '; does the program need `chmod a+x`?'
         if not check:
-            result = CompletedProcess(
-                args=cmd, stderr=estr.encode('utf-8'), returncode=255)
+            result = CompletedProcess(args=cmd, stderr=estr, returncode=255)
         else:
             raise CalledProcessError(
-                result.returncode, result.cmd, stdout=result.stdout,
-                stderr=result.stderr, msg=estr, exception=e)
+                result.returncode, result.cmd, msg=estr, exception=e,
+                stdout=ensure_text(result.stdout),
+                stderr=ensure_text(result.stderr)) from e
     finally:
         if proc is not None:
             # Ensure the process is dead.
@@ -428,10 +441,8 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
                                 None, None)
 
     # Make sure output is returned as a string rather than bytes.
-    if result.stdout is not None:
-        result.stdout = result.stdout.decode('utf-8', 'replace')
-    if result.stderr is not None:
-        result.stderr = result.stderr.decode('utf-8', 'replace')
+    result.stdout = ensure_text(result.stdout)
+    result.stderr = ensure_text(result.stderr)
 
     return result
 # pylint: enable=redefined-builtin,input-builtin
