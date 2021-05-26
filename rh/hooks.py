@@ -343,8 +343,9 @@ def check_buildifier(project, commit, _desc, diff, options=None):
             "\n\n" + buildifier + " " + " ".join(paths) +
             "\n\n"
         )
+        fixup_func = _fixup_func_caller([buildifier] + paths)
         return [rh.results.HookResult(
-            'buildifier', project, commit, error=error)]
+            'buildifier', project, commit, error=error, fixup_func=fixup_func)]
 
 
 def check_checkpatch(project, commit, _desc, diff, options=None):
