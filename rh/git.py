@@ -188,6 +188,15 @@ def find_repo_root(path=None):
     orig_path = path
 
     path = os.path.abspath(path)
+
+    # If we are working on a superproject instead of a repo client, use the
+    # result from git directly.  For regular repo client, this would return
+    # empty string.
+    cmd = ['git', 'rev-parse', '--show-superproject-working-tree']
+    git_worktree_path = rh.utils.run(cmd, cwd=path, capture_output=True).stdout.strip()
+    if git_worktree_path:
+        return git_worktree_path
+
     while not os.path.exists(os.path.join(path, '.repo')):
         path = os.path.dirname(path)
         if path == '/':
