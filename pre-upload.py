@@ -1,5 +1,4 @@
-#!/usr/bin/python
-# -*- coding:utf-8 -*-
+#!/usr/bin/env python3
 # Copyright 2016 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,22 +19,15 @@ Normally this is loaded indirectly by repo itself, but it can be run directly
 when developing.
 """
 
-from __future__ import print_function
-
 import argparse
+import datetime
 import os
 import sys
 
 
 # Assert some minimum Python versions as we don't test or support any others.
-# We only support Python 2.7, and require 2.7.5+/3.4+ to include signal fix:
-# https://bugs.python.org/issue14173
-if sys.version_info < (2, 7, 5):
-    print('repohooks: error: Python-2.7.5+ is required', file=sys.stderr)
-    sys.exit(1)
-elif sys.version_info.major == 3 and sys.version_info < (3, 4):
-    # We don't actually test <Python-3.6.  Hope for the best!
-    print('repohooks: error: Python-3.4+ is required', file=sys.stderr)
+if sys.version_info < (3, 6):
+    print('repohooks: error: Python-3.6+ is required', file=sys.stderr)
     sys.exit(1)
 
 
@@ -52,7 +44,6 @@ import rh.results
 import rh.config
 import rh.git
 import rh.hooks
-import rh.sixish
 import rh.terminal
 import rh.utils
 
@@ -71,6 +62,9 @@ class Output(object):
     FAILED = COLOR.color(COLOR.RED, 'FAILED')
     WARNING = COLOR.color(COLOR.YELLOW, 'WARNING')
 
+    # How long a hook is allowed to run before we warn that it is "too slow".
+    _SLOW_HOOK_DURATION = datetime.timedelta(seconds=30)
+
     def __init__(self, project_name):
         """Create a new Output object for a specified project.
 
@@ -81,6 +75,9 @@ class Output(object):
         self.num_hooks = None
         self.hook_index = 0
         self.success = True
+        self.start_time = datetime.datetime.now()
+        self.hook_start_time = None
+        self._curr_hook_name = None
 
     def set_num_hooks(self, num_hooks):
         """Keep track of how many hooks we'll be running.
@@ -107,28 +104,38 @@ class Output(object):
         Args:
           hook_name: name of the hook.
         """
+        self._curr_hook_name = hook_name
+        self.hook_start_time = datetime.datetime.now()
         status_line = '[%s %d/%d] %s' % (self.RUNNING, self.hook_index,
                                          self.num_hooks, hook_name)
         self.hook_index += 1
         rh.terminal.print_status_line(status_line)
 
-    def hook_error(self, hook_name, error):
+    def hook_finish(self):
+        """Finish processing any per-hook state."""
+        duration = datetime.datetime.now() - self.hook_start_time
+        if duration >= self._SLOW_HOOK_DURATION:
+            self.hook_warning(
+                'This hook took %s to finish which is fairly slow for '
+                'developers.\nPlease consider moving the check to the '
+                'server/CI system instead.' %
+                (rh.utils.timedelta_str(duration),))
+
+    def hook_error(self, error):
         """Print an error for a single hook.
 
         Args:
-          hook_name: name of the hook.
           error: error string.
         """
-        self.error(hook_name, error)
+        self.error(self._curr_hook_name, error)
 
-    def hook_warning(self, hook_name, warning):
+    def hook_warning(self, warning):
         """Print a warning for a single hook.
 
         Args:
-          hook_name: name of the hook.
           warning: warning string.
         """
-        status_line = '[%s] %s' % (self.WARNING, hook_name)
+        status_line = '[%s] %s' % (self.WARNING, self._curr_hook_name)
         rh.terminal.print_status_line(status_line, print_newline=True)
         print(warning, file=sys.stderr)
 
@@ -146,10 +153,11 @@ class Output(object):
 
     def finish(self):
         """Print summary for all the hooks."""
-        status_line = '[%s] repohooks for %s %s' % (
+        status_line = '[%s] repohooks for %s %s in %s' % (
             self.PASSED if self.success else self.FAILED,
             self.project_name,
-            'passed' if self.success else 'failed')
+            'passed' if self.success else 'failed',
+            rh.utils.timedelta_str(datetime.datetime.now() - self.start_time))
         rh.terminal.print_status_line(status_line, print_newline=True)
 
 
@@ -166,6 +174,11 @@ def _process_hook_results(results):
     if not results:
         return (None, None)
 
+    # We track these as dedicated fields in case a hook doesn't output anything.
+    # We want to treat silent non-zero exits as failures too.
+    has_error = False
+    has_warning = False
+
     error_ret = ''
     warning_ret = ''
     for result in results:
@@ -176,11 +189,14 @@ def _process_hook_results(results):
             lines = result.error.splitlines()
             ret += '\n'.join('    %s' % (x,) for x in lines)
             if result.is_warning():
+                has_warning = True
                 warning_ret += ret
             else:
+                has_error = True
                 error_ret += ret
 
-    return (error_ret or None, warning_ret or None)
+    return (error_ret if has_error else None,
+            warning_ret if has_warning else None)
 
 
 def _get_project_config():
@@ -198,7 +214,7 @@ def _get_project_config():
         # Load the config for this git repo.
         '.',
     )
-    return rh.config.PreUploadConfig(paths=paths, global_paths=global_paths)
+    return rh.config.PreUploadSettings(paths=paths, global_paths=global_paths)
 
 
 def _attempt_fixes(fixup_func_list, commit_list):
@@ -263,21 +279,22 @@ def _run_project_hooks_in_cwd(project_name, proj_dir, output, commit_list=None):
     try:
         remote = rh.git.get_upstream_remote()
         upstream_branch = rh.git.get_upstream_branch()
-    except rh.utils.RunCommandError as e:
+    except rh.utils.CalledProcessError as e:
         output.error('Upstream remote/tracking branch lookup',
                      '%s\nDid you run repo start?  Is your HEAD detached?' %
                      (e,))
         return False
 
+    project = rh.Project(name=project_name, dir=proj_dir, remote=remote)
+    rel_proj_dir = os.path.relpath(proj_dir, rh.git.find_repo_root())
+
     os.environ.update({
         'REPO_LREV': str(rh.git.get_commit_for_ref(upstream_branch)),
-        'REPO_PATH': str(proj_dir),
+        'REPO_PATH': str(rel_proj_dir),
         'REPO_PROJECT': str(project_name),
         'REPO_REMOTE': str(remote),
         'REPO_RREV': str(rh.git.get_remote_revision(upstream_branch, remote)),
     })
-
-    project = rh.Project(name=project_name, dir=proj_dir, remote=remote)
 
     if not commit_list:
         commit_list = rh.git.get_commits(
@@ -318,21 +335,24 @@ def _run_project_hooks_in_cwd(project_name, proj_dir, output, commit_list=None):
         os.environ['PREUPLOAD_COMMIT'] = commit
         diff = rh.git.get_affected_files(commit)
         desc = rh.git.get_commit_desc(commit)
-        rh.sixish.setenv('PREUPLOAD_COMMIT_MESSAGE', desc)
+        os.environ['PREUPLOAD_COMMIT_MESSAGE'] = desc
 
         commit_summary = desc.split('\n', 1)[0]
         output.commit_start(commit=commit, commit_summary=commit_summary)
 
-        for name, hook in hooks:
+        for name, hook, exclusion_scope in hooks:
             output.hook_start(name)
+            if rel_proj_dir in exclusion_scope:
+                break
             hook_results = hook(project, commit, desc, diff)
+            output.hook_finish()
             (error, warning) = _process_hook_results(hook_results)
-            if error or warning:
-                if warning:
-                    output.hook_warning(name, warning)
-                if error:
+            if error is not None or warning is not None:
+                if warning is not None:
+                    output.hook_warning(warning)
+                if error is not None:
                     ret = False
-                    output.hook_error(name, error)
+                    output.hook_error(error)
                 for result in hook_results:
                     if result.fixup_func:
                         fixup_func_list.append((name, commit,
@@ -362,8 +382,8 @@ def _run_project_hooks(project_name, proj_dir=None, commit_list=None):
 
     if proj_dir is None:
         cmd = ['repo', 'forall', project_name, '-c', 'pwd']
-        result = rh.utils.run_command(cmd, capture_output=True)
-        proj_dirs = result.output.split()
+        result = rh.utils.run(cmd, capture_output=True)
+        proj_dirs = result.stdout.split()
         if not proj_dirs:
             print('%s cannot be found.' % project_name, file=sys.stderr)
             print('Please specify a valid project.', file=sys.stderr)
@@ -431,8 +451,7 @@ def _identify_project(path):
       a blank string upon failure.
     """
     cmd = ['repo', 'forall', '.', '-c', 'echo ${REPO_PROJECT}']
-    return rh.utils.run_command(cmd, capture_output=True, redirect_stderr=True,
-                                cwd=path).output.strip()
+    return rh.utils.run(cmd, capture_output=True, cwd=path).stdout.strip()
 
 
 def direct_main(argv):
@@ -464,8 +483,7 @@ def direct_main(argv):
     # project from CWD.
     if opts.dir is None:
         cmd = ['git', 'rev-parse', '--git-dir']
-        git_dir = rh.utils.run_command(cmd, capture_output=True,
-                                       redirect_stderr=True).output.strip()
+        git_dir = rh.utils.run(cmd, capture_output=True).stdout.strip()
         if not git_dir:
             parser.error('The current directory is not part of a git project.')
         opts.dir = os.path.dirname(os.path.abspath(git_dir))
@@ -487,13 +505,13 @@ def direct_main(argv):
     return 1
 
 def has_hook(hooks, name):
-    for (n, h) in hooks:
+    for (n, h, s) in hooks:
         if name == n:
             return True
     return False
 
 def remove_hook(hooks, name):
-    return [(n, h) for (n, h) in hooks if n != name]
+    return [(n, h, s) for (n, h, s) in hooks if n != name]
 
 if __name__ == '__main__':
     sys.exit(direct_main(sys.argv[1:]))
