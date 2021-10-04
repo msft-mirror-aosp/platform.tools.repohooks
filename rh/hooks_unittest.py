@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding:utf-8 -*-
 # Copyright 2016 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,8 +14,6 @@
 # limitations under the License.
 
 """Unittests for the hooks module."""
-
-from __future__ import print_function
 
 import os
 import sys
@@ -525,12 +522,13 @@ class BuiltinHooksTests(unittest.TestCase):
             True,
             (
                 'subj',
-                'subj\n\nTest: i did done dood it\n',
-                'subj\n\nMore content\n\nTest: i did done dood it\n',
-                'subj\n\nRelnote: This is a release note\n',
-                'subj\n\nRelnote:This is a release note\n',
+                'subj\n\nTest: i did done dood it\nBug: 1234',
+                'subj\n\nMore content\n\nTest: i did done dood it\nBug: 1234',
+                'subj\n\nRelnote: This is a release note\nBug: 1234',
+                'subj\n\nRelnote:This is a release note\nBug: 1234',
                 'subj\n\nRelnote: This is a release note.\nBug: 1234',
                 'subj\n\nRelnote: "This is a release note."\nBug: 1234',
+                'subj\n\nRelnote: "This is a \\"release note\\"."\n\nBug: 1234',
                 'subj\n\nRelnote: This is a release note.\nChange-Id: 1234',
                 'subj\n\nRelnote: This is a release note.\n\nChange-Id: 1234',
                 ('subj\n\nRelnote: "This is a release note."\n\n'
@@ -546,6 +544,10 @@ class BuiltinHooksTests(unittest.TestCase):
                  'It contains a correct second line.\n'
                  'And even a third line."\n'
                  'Bug: 1234'),
+                ('subj\n\nRelnote: "This is a release note.\n'
+                 'It contains a correct second line.\n'
+                 '\\"Quotes\\" are even used on the third line."\n'
+                 'Bug: 1234'),
                 ('subj\n\nRelnote: This is release note 1.\n'
                  'Relnote: This is release note 2.\n'
                  'Bug: 1234'),
@@ -557,6 +559,37 @@ class BuiltinHooksTests(unittest.TestCase):
                  'a correctly formatted second line."\n\n'
                  'Relnote: "This is release note 2, and it\n'
                  'contains a correctly formatted second line."\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: "This is a release note with\n'
+                 'a correctly formatted second line."\n\n'
+                 'Bug: 1234'
+                 'Here is some extra "quoted" content.'),
+                ('subj\n\nRelnote: """This is a release note.\n\n'
+                 'This relnote contains an empty line.\n'
+                 'Then a non-empty line.\n\n'
+                 'And another empty line."""\n\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: """This is a release note.\n\n'
+                 'This relnote contains an empty line.\n'
+                 'Then an acceptable "quoted" line.\n\n'
+                 'And another empty line."""\n\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: """This is a release note."""\n\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: """This is a release note.\n'
+                 'It has a second line."""\n\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: """This is a release note.\n'
+                 'It has a second line, but does not end here.\n'
+                 '"""\n\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: """This is a release note.\n'
+                 '"It" has a second line, but does not end here.\n'
+                 '"""\n\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: "This is a release note.\n'
+                 'It has a second line, but does not end here.\n'
+                 '"\n\n'
                  'Bug: 1234'),
             ))
 
@@ -570,6 +603,8 @@ class BuiltinHooksTests(unittest.TestCase):
                 'subj\n\nRel-note: This is a release note.\n',
                 'subj\n\nrelnoTes: This is a release note.\n',
                 'subj\n\nrel-Note: This is a release note.\n',
+                'subj\n\nRelnote: "This is a "release note"."\nBug: 1234',
+                'subj\n\nRelnote: This is a "release note".\nBug: 1234',
                 ('subj\n\nRelnote: This is a release note.\n'
                  'It contains an incorrect second line.'),
                 ('subj\n\nRelnote: "This is a release note.\n'
@@ -591,6 +626,17 @@ class BuiltinHooksTests(unittest.TestCase):
                  'a correctly formatted second line."\n\n'
                  'Relnote: This is release note 2, and it\n'
                  'contains an incorrectly formatted second line.\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: "This is a release note.\n'
+                 'It contains a correct second line.\n'
+                 'But incorrect "quotes" on the third line."\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: """This is a release note.\n'
+                 'It has a second line, but no closing triple quote.\n\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: "This is a release note.\n'
+                 '"It" has a second line, but does not end here.\n'
+                 '"\n\n'
                  'Bug: 1234'),
             ))
 
@@ -774,6 +820,20 @@ class BuiltinHooksTests(unittest.TestCase):
         # Second call will have some results.
         diff = [rh.git.RawDiffEntry(file='TEST_MAPPING')]
         ret = rh.hooks.check_android_test_mapping(
+            self.project, 'commit', 'desc', diff, options=self.options)
+        self.assertIsNotNone(ret)
+
+    def test_aidl_format(self, mock_check, _mock_run):
+        """Verify the aidl_format builtin hook."""
+        # First call should do nothing as there are no files to check.
+        ret = rh.hooks.check_aidl_format(
+            self.project, 'commit', 'desc', (), options=self.options)
+        self.assertIsNone(ret)
+        self.assertFalse(mock_check.called)
+
+        # Second call will have some results.
+        diff = [rh.git.RawDiffEntry(file='IFoo.go')]
+        ret = rh.hooks.check_gofmt(
             self.project, 'commit', 'desc', diff, options=self.options)
         self.assertIsNotNone(ret)
 
