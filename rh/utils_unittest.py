@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding:utf-8 -*-
 # Copyright 2019 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,8 +14,6 @@
 # limitations under the License.
 
 """Unittests for the utils module."""
-
-from __future__ import print_function
 
 import datetime
 import os
@@ -163,6 +160,60 @@ class RunCommandTests(unittest.TestCase):
         ret = rh.utils.run(['cat'], redirect_stdout=True, input=u'ß')
         self.assertEqual(u'ß', ret.stdout)
         self.assertIsNone(ret.stderr)
+
+    def test_check_false(self):
+        """Verify handling of check=False."""
+        ret = rh.utils.run(['false'], check=False)
+        self.assertNotEqual(0, ret.returncode)
+        self.assertIn('false', str(ret))
+
+        ret = rh.utils.run(['true'], check=False)
+        self.assertEqual(0, ret.returncode)
+        self.assertIn('true', str(ret))
+
+    def test_check_true(self):
+        """Verify handling of check=True."""
+        with self.assertRaises(rh.utils.CalledProcessError) as e:
+            rh.utils.run(['false'], check=True)
+        err = e.exception
+        self.assertNotEqual(0, err.returncode)
+        self.assertIn('false', str(err))
+
+        ret = rh.utils.run(['true'], check=True)
+        self.assertEqual(0, ret.returncode)
+        self.assertIn('true', str(ret))
+
+    def test_check_false_output(self):
+        """Verify handling of output capturing w/check=False."""
+        with self.assertRaises(rh.utils.CalledProcessError) as e:
+            rh.utils.run(['sh', '-c', 'echo out; echo err >&2; false'],
+                         check=True, capture_output=True)
+        err = e.exception
+        self.assertNotEqual(0, err.returncode)
+        self.assertIn('false', str(err))
+
+    def test_check_true_missing_prog_output(self):
+        """Verify handling of output capturing w/missing progs."""
+        with self.assertRaises(rh.utils.CalledProcessError) as e:
+            rh.utils.run(['./!~a/b/c/d/'], check=True, capture_output=True)
+        err = e.exception
+        self.assertNotEqual(0, err.returncode)
+        self.assertIn('a/b/c/d', str(err))
+
+    def test_check_false_missing_prog_output(self):
+        """Verify handling of output capturing w/missing progs."""
+        ret = rh.utils.run(['./!~a/b/c/d/'], check=False, capture_output=True)
+        self.assertNotEqual(0, ret.returncode)
+        self.assertIn('a/b/c/d', str(ret))
+
+    def test_check_false_missing_prog_combined_output(self):
+        """Verify handling of combined output capturing w/missing progs."""
+        with self.assertRaises(rh.utils.CalledProcessError) as e:
+            rh.utils.run(['./!~a/b/c/d/'], check=True,
+                         combine_stdout_stderr=True)
+        err = e.exception
+        self.assertNotEqual(0, err.returncode)
+        self.assertIn('a/b/c/d', str(err))
 
 
 if __name__ == '__main__':
