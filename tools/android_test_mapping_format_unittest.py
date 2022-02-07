@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unittests for android_test_mapping_format."""
-
 import os
 import shutil
 import tempfile
@@ -23,7 +21,7 @@ import unittest
 import android_test_mapping_format
 
 
-_VALID_TEST_MAPPING = r"""
+VALID_TEST_MAPPING = r"""
 {
   "presubmit": [
     {
@@ -54,11 +52,11 @@ _VALID_TEST_MAPPING = r"""
 }
 """
 
-_BAD_JSON = """
+BAD_JSON = """
 {wrong format}
 """
 
-_BAD_TEST_WRONG_KEY = """
+BAD_TEST_WRONG_KEY = """
 {
   "presubmit": [
     {
@@ -68,7 +66,7 @@ _BAD_TEST_WRONG_KEY = """
 }
 """
 
-_BAD_TEST_WRONG_HOST_VALUE = """
+BAD_TEST_WRONG_HOST_VALUE = """
 {
   "presubmit": [
     {
@@ -80,7 +78,7 @@ _BAD_TEST_WRONG_HOST_VALUE = """
 """
 
 
-_BAD_TEST_WRONG_PREFERRED_TARGETS_VALUE_NONE_LIST = """
+BAD_TEST_WRONG_PREFERRED_TARGETS_VALUE_NONE_LIST = """
 {
   "presubmit": [
     {
@@ -91,7 +89,7 @@ _BAD_TEST_WRONG_PREFERRED_TARGETS_VALUE_NONE_LIST = """
 }
 """
 
-_BAD_TEST_WRONG_PREFERRED_TARGETS_VALUE_WRONG_TYPE = """
+BAD_TEST_WRONG_PREFERRED_TARGETS_VALUE_WRONG_TYPE = """
 {
   "presubmit": [
     {
@@ -102,7 +100,7 @@ _BAD_TEST_WRONG_PREFERRED_TARGETS_VALUE_WRONG_TYPE = """
 }
 """
 
-_BAD_TEST_WRONG_OPTION = """
+BAD_TEST_WRONG_OPTION = """
 {
   "presubmit": [
     {
@@ -118,7 +116,7 @@ _BAD_TEST_WRONG_OPTION = """
 }
 """
 
-_BAD_IMPORT_WRONG_KEY = """
+BAD_IMPORT_WRONG_KEY = """
 {
   "imports": [
     {
@@ -128,7 +126,7 @@ _BAD_IMPORT_WRONG_KEY = """
 }
 """
 
-_BAD_IMPORT_WRONG_IMPORT_VALUE = """
+BAD_IMPORT_WRONG_IMPORT_VALUE = """
 {
   "imports": [
     {
@@ -139,7 +137,7 @@ _BAD_IMPORT_WRONG_IMPORT_VALUE = """
 }
 """
 
-_BAD_FILE_PATTERNS = """
+BAD_FILE_PATTERNS = """
 {
   "presubmit": [
     {
@@ -150,7 +148,7 @@ _BAD_FILE_PATTERNS = """
 }
 """
 
-_TEST_MAPPING_WITH_SUPPORTED_COMMENTS = r"""
+TEST_MAPPING_WITH_SUPPORTED_COMMENTS = r"""
 // supported comment
 {
   // supported comment!@#$%^&*()_
@@ -173,7 +171,7 @@ _TEST_MAPPING_WITH_SUPPORTED_COMMENTS = r"""
 }
 """
 
-_TEST_MAPPING_WITH_NON_SUPPORTED_COMMENTS = """
+TEST_MAPPING_WITH_NON_SUPPORTED_COMMENTS = """
 { #non-supported comments
   // supported comments
   "presubmit": [#non-supported comments
@@ -198,112 +196,112 @@ class AndroidTestMappingFormatTests(unittest.TestCase):
     def test_valid_test_mapping(self):
         """Verify that the check doesn't raise any error for valid test mapping.
         """
-        with open(self.test_mapping_file, 'w') as file:
-            file.write(_VALID_TEST_MAPPING)
-        with open(self.test_mapping_file, 'r') as file:
-            android_test_mapping_format.process_file(file.read())
+        with open(self.test_mapping_file, 'w') as f:
+            f.write(VALID_TEST_MAPPING)
+        with open(self.test_mapping_file, 'r') as f:
+            android_test_mapping_format.process_file(f.read())
 
     def test_invalid_test_mapping_bad_json(self):
         """Verify that TEST_MAPPING file with bad json can be detected."""
-        with open(self.test_mapping_file, 'w') as file:
-            file.write(_BAD_JSON)
-        with open(self.test_mapping_file, 'r') as file:
+        with open(self.test_mapping_file, 'w') as f:
+            f.write(BAD_JSON)
+        with open(self.test_mapping_file, 'r') as f:
             self.assertRaises(
                 ValueError, android_test_mapping_format.process_file,
-                file.read())
+                f.read())
 
     def test_invalid_test_mapping_wrong_test_key(self):
         """Verify that test config using wrong key can be detected."""
-        with open(self.test_mapping_file, 'w') as file:
-            file.write(_BAD_TEST_WRONG_KEY)
-        with open(self.test_mapping_file, 'r') as file:
+        with open(self.test_mapping_file, 'w') as f:
+            f.write(BAD_TEST_WRONG_KEY)
+        with open(self.test_mapping_file, 'r') as f:
             self.assertRaises(
                 android_test_mapping_format.InvalidTestMappingError,
                 android_test_mapping_format.process_file,
-                file.read())
+                f.read())
 
     def test_invalid_test_mapping_wrong_test_value(self):
         """Verify that test config using wrong host value can be detected."""
-        with open(self.test_mapping_file, 'w') as file:
-            file.write(_BAD_TEST_WRONG_HOST_VALUE)
-        with open(self.test_mapping_file, 'r') as file:
+        with open(self.test_mapping_file, 'w') as f:
+            f.write(BAD_TEST_WRONG_HOST_VALUE)
+        with open(self.test_mapping_file, 'r') as f:
             self.assertRaises(
                 android_test_mapping_format.InvalidTestMappingError,
                 android_test_mapping_format.process_file,
-                file.read())
+                f.read())
 
     def test_invalid_test_mapping_wrong_preferred_targets_value(self):
         """Verify invalid preferred_targets are rejected."""
-        with open(self.test_mapping_file, 'w') as file:
-            file.write(_BAD_TEST_WRONG_PREFERRED_TARGETS_VALUE_NONE_LIST)
-        with open(self.test_mapping_file, 'r') as file:
+        with open(self.test_mapping_file, 'w') as f:
+            f.write(BAD_TEST_WRONG_PREFERRED_TARGETS_VALUE_NONE_LIST)
+        with open(self.test_mapping_file, 'r') as f:
             self.assertRaises(
                 android_test_mapping_format.InvalidTestMappingError,
                 android_test_mapping_format.process_file,
-                file.read())
-        with open(self.test_mapping_file, 'w') as file:
-            file.write(_BAD_TEST_WRONG_PREFERRED_TARGETS_VALUE_WRONG_TYPE)
-        with open(self.test_mapping_file, 'r') as file:
+                f.read())
+        with open(self.test_mapping_file, 'w') as f:
+            f.write(BAD_TEST_WRONG_PREFERRED_TARGETS_VALUE_WRONG_TYPE)
+        with open(self.test_mapping_file, 'r') as f:
             self.assertRaises(
                 android_test_mapping_format.InvalidTestMappingError,
                 android_test_mapping_format.process_file,
-                file.read())
+                f.read())
 
     def test_invalid_test_mapping_wrong_test_option(self):
         """Verify that test config using wrong option can be detected."""
-        with open(self.test_mapping_file, 'w') as file:
-            file.write(_BAD_TEST_WRONG_OPTION)
-        with open(self.test_mapping_file, 'r') as file:
+        with open(self.test_mapping_file, 'w') as f:
+            f.write(BAD_TEST_WRONG_OPTION)
+        with open(self.test_mapping_file, 'r') as f:
             self.assertRaises(
                 android_test_mapping_format.InvalidTestMappingError,
                 android_test_mapping_format.process_file,
-                file.read())
+                f.read())
 
     def test_invalid_test_mapping_wrong_import_key(self):
         """Verify that import setting using wrong key can be detected."""
-        with open(self.test_mapping_file, 'w') as file:
-            file.write(_BAD_IMPORT_WRONG_KEY)
-        with open(self.test_mapping_file, 'r') as file:
+        with open(self.test_mapping_file, 'w') as f:
+            f.write(BAD_IMPORT_WRONG_KEY)
+        with open(self.test_mapping_file, 'r') as f:
             self.assertRaises(
                 android_test_mapping_format.InvalidTestMappingError,
                 android_test_mapping_format.process_file,
-                file.read())
+                f.read())
 
     def test_invalid_test_mapping_wrong_import_value(self):
         """Verify that import setting using wrong value can be detected."""
-        with open(self.test_mapping_file, 'w') as file:
-            file.write(_BAD_IMPORT_WRONG_IMPORT_VALUE)
-        with open(self.test_mapping_file, 'r') as file:
+        with open(self.test_mapping_file, 'w') as f:
+            f.write(BAD_IMPORT_WRONG_IMPORT_VALUE)
+        with open(self.test_mapping_file, 'r') as f:
             self.assertRaises(
                 android_test_mapping_format.InvalidTestMappingError,
                 android_test_mapping_format.process_file,
-                file.read())
+                f.read())
 
     def test_invalid_test_mapping_file_patterns_value(self):
         """Verify that file_patterns using wrong value can be detected."""
-        with open(self.test_mapping_file, 'w') as file:
-            file.write(_BAD_FILE_PATTERNS)
-        with open(self.test_mapping_file, 'r') as file:
+        with open(self.test_mapping_file, 'w') as f:
+            f.write(BAD_FILE_PATTERNS)
+        with open(self.test_mapping_file, 'r') as f:
             self.assertRaises(
                 android_test_mapping_format.InvalidTestMappingError,
                 android_test_mapping_format.process_file,
-                file.read())
+                f.read())
 
     def test_valid_test_mapping_file_with_supported_comments(self):
         """Verify that '//'-format comment can be filtered."""
-        with open(self.test_mapping_file, 'w') as file:
-            file.write(_TEST_MAPPING_WITH_SUPPORTED_COMMENTS)
-        with open(self.test_mapping_file, 'r') as file:
-            android_test_mapping_format.process_file(file.read())
+        with open(self.test_mapping_file, 'w') as f:
+            f.write(TEST_MAPPING_WITH_SUPPORTED_COMMENTS)
+        with open(self.test_mapping_file, 'r') as f:
+            android_test_mapping_format.process_file(f.read())
 
     def test_valid_test_mapping_file_with_non_supported_comments(self):
         """Verify that non-supported comment can be detected."""
-        with open(self.test_mapping_file, 'w') as file:
-            file.write(_TEST_MAPPING_WITH_NON_SUPPORTED_COMMENTS)
-        with open(self.test_mapping_file, 'r') as file:
+        with open(self.test_mapping_file, 'w') as f:
+            f.write(TEST_MAPPING_WITH_NON_SUPPORTED_COMMENTS)
+        with open(self.test_mapping_file, 'r') as f:
             self.assertRaises(
                 ValueError, android_test_mapping_format.process_file,
-                file.read())
+                f.read())
 
 
 if __name__ == '__main__':
