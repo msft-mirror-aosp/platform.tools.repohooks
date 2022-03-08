@@ -1,4 +1,3 @@
-# -*- coding:utf-8 -*-
 # Copyright 2016 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,8 +13,6 @@
 # limitations under the License.
 
 """Common errors thrown when repo preupload checks fail."""
-
-from __future__ import print_function
 
 import os
 import sys
@@ -64,12 +61,12 @@ class HookResult(object):
 
 
 class HookCommandResult(HookResult):
-    """A single hook result based on a CommandResult."""
+    """A single hook result based on a CompletedProcess."""
 
     def __init__(self, hook, project, commit, result, files=(),
                  fixup_func=None):
         HookResult.__init__(self, hook, project, commit,
-                            result.error if result.error else result.output,
+                            result.stderr if result.stderr else result.stdout,
                             files=files, fixup_func=fixup_func)
         self.result = result
 
