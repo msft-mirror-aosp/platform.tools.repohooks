@@ -66,6 +66,10 @@ download() {
   # Then any data it uses.
   url="${CGIT_URL}/scripts/spelling.txt?h=v${version}"
   wget "${url}" -O spelling.txt
+
+  # Then any data it uses.
+  url="${CGIT_URL}/scripts/const_structs.checkpatch?h=v${version}"
+  wget "${url}" -O const_structs.checkpatch
 }
 
 main() {
