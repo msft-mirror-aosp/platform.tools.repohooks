@@ -473,6 +473,42 @@ def check_commit_msg_buganizer_field(project, commit, desc, _diff, options=None)
                                  commit, error=error)]
 
 
+def check_ktfmt(project, commit, _desc, diff, options=None):
+    """Checks that kotlin files are formatted with ktfmt."""
+
+    include_dir_args = [x for x in options.args()
+                        if x.startswith('--include-dirs=')]
+    include_dirs = [x.removeprefix('--include-dirs=').split(',')
+                    for x in include_dir_args]
+    patterns = [fr'^{x}/.*\.kt$' for dir_list in include_dirs
+                for x in dir_list]
+    if not patterns:
+        patterns = [r'\.kt$']
+
+    filtered = _filter_diff(diff, patterns)
+
+    if not filtered:
+        return None
+
+    args = [x for x in options.args() if x not in include_dir_args]
+
+    ktfmt = options.tool_path('ktfmt')
+    cmd = [ktfmt, '--dry-run'] + args + HookOptions.expand_vars(
+        ('${PREUPLOAD_FILES}',), filtered)
+    result = _run(cmd)
+    if result.stdout:
+        paths = [os.path.join(project.dir, x.file) for x in filtered]
+        error = (
+            f'\nKotlin files need formatting.\n'
+            'To reformat the kotlin files in this commit:\n'
+            f'{ktfmt} {" ".join(paths)}'
+        )
+        fixup_func = _fixup_func_caller([ktfmt] + paths)
+        return [rh.results.HookResult('ktfmt', project, commit, error=error,
+                                      files=paths, fixup_func=fixup_func)]
+    return None
+
+
 def check_commit_msg_bug_field(project, commit, desc, _diff, options=None):
     """Check the commit message for a 'Bug:' line."""
     field = 'Bug'
@@ -1094,6 +1130,7 @@ BUILTIN_HOOKS = {
     'gofmt': check_gofmt,
     'google_java_format': check_google_java_format,
     'jsonlint': check_json,
+    'ktfmt': check_ktfmt,
     'pylint': check_pylint2,
     'pylint2': check_pylint2,
     'pylint3': check_pylint3,
@@ -1115,6 +1152,7 @@ TOOL_PATHS = {
     'gofmt': 'gofmt',
     'google-java-format': 'google-java-format',
     'google-java-format-diff': 'google-java-format-diff.py',
+    'ktfmt': 'ktfmt',
     'pylint': 'pylint',
     'rustfmt': 'rustfmt',
 }
