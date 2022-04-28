@@ -42,11 +42,11 @@ def timedelta_str(delta):
     total = delta.total_seconds()
     hours, rem = divmod(total, 3600)
     mins, secs = divmod(rem, 60)
-    ret = '%i.%03is' % (secs, delta.microseconds // 1000)
+    ret = f'{int(secs)}.{delta.microseconds // 1000:03}s'
     if mins:
-        ret = '%im%s' % (mins, ret)
+        ret = f'{int(mins)}m{ret}'
     if hours:
-        ret = '%ih%s' % (hours, ret)
+        ret = f'{int(hours)}h{ret}'
     return ret
 
 
@@ -87,8 +87,8 @@ class CalledProcessError(subprocess.CalledProcessError):
     def __init__(self, returncode, cmd, stdout=None, stderr=None, msg=None,
                  exception=None):
         if exception is not None and not isinstance(exception, Exception):
-            raise TypeError('exception must be an exception instance; got %r'
-                            % (exception,))
+            raise TypeError(
+                f'exception must be an exception instance; got {exception!r}')
 
         super().__init__(returncode, cmd, stdout)
         # The parent class will set |output|, so delete it.
@@ -117,7 +117,7 @@ class CalledProcessError(subprocess.CalledProcessError):
           A summary string for this result.
         """
         items = [
-            'return code: %s; command: %s' % (self.returncode, self.cmdstr),
+            f'return code: {self.returncode}; command: {self.cmdstr}',
         ]
         if stderr and self.stderr:
             items.append(self.stderr)
@@ -171,7 +171,7 @@ def _kill_child_process(proc, int_timeout, kill_timeout, cmd, original_handler,
                 # Still doesn't want to die.  Too bad, so sad, time to die.
                 proc.kill()
         except EnvironmentError as e:
-            print('Ignoring unhandled exception in _kill_child_process: %s' % e,
+            print(f'Ignoring unhandled exception in _kill_child_process: {e}',
                   file=sys.stderr)
 
         # Ensure our child process has been reaped, but don't wait forever.
@@ -180,7 +180,7 @@ def _kill_child_process(proc, int_timeout, kill_timeout, cmd, original_handler,
     if not rh.signals.relay_signal(original_handler, signum, frame):
         # Mock up our own, matching exit code for signaling.
         raise TerminateCalledProcessError(
-            signum << 8, cmd, msg='Received signal %i' % signum)
+            signum << 8, cmd, msg=f'Received signal {signum}')
 
 
 class _Popen(subprocess.Popen):
@@ -196,7 +196,7 @@ class _Popen(subprocess.Popen):
     process has knowingly been waitpid'd already.
     """
 
-    # pylint: disable=arguments-differ
+    # pylint: disable=arguments-differ,arguments-renamed
     def send_signal(self, signum):
         if self.returncode is not None:
             # The original implementation in Popen allows signaling whatever
@@ -245,7 +245,7 @@ class _Popen(subprocess.Popen):
 
 
 # We use the keyword arg |input| which trips up pylint checks.
-# pylint: disable=redefined-builtin,input-builtin
+# pylint: disable=redefined-builtin
 def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
         shell=False, env=None, extra_env=None, combine_stdout_stderr=False,
         check=True, int_timeout=1, kill_timeout=1, capture_output=False,
@@ -399,9 +399,9 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
         result.returncode = proc.returncode
 
         if check and proc.returncode:
-            msg = 'cwd=%s' % cwd
+            msg = f'cwd={cwd}'
             if extra_env:
-                msg += ', extra env=%s' % extra_env
+                msg += f', extra env={extra_env}'
             raise CalledProcessError(
                 result.returncode, result.cmd, msg=msg,
                 stdout=ensure_text(result.stdout),
@@ -436,4 +436,4 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
     result.stderr = ensure_text(result.stderr)
 
     return result
-# pylint: enable=redefined-builtin,input-builtin
+# pylint: enable=redefined-builtin
