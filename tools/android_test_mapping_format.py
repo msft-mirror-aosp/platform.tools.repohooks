@@ -184,12 +184,13 @@ def main(argv):
             if opts.commit:
                 json_data = rh.git.get_file_content(opts.commit, filename)
             else:
-                with open(os.path.join(opts.project_dir, filename)) as file:
+                with open(os.path.join(opts.project_dir, filename),
+                          encoding='utf-8') as file:
                     json_data = file.read()
             process_file(json_data)
     except:
-        print('Visit %s for details about the format of TEST_MAPPING '
-              'file.' % _TEST_MAPPING_URL, file=sys.stderr)
+        print('Visit {_TEST_MAPPING_URL} for details about the format of '
+              'TEST_MAPPING file.', file=sys.stderr)
         raise
 
 
