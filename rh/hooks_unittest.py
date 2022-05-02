@@ -267,6 +267,20 @@ class UtilsTests(unittest.TestCase):
         self.assertTrue(isinstance(ret, str))
         self.assertNotEqual(ret, '')
 
+    def testSortedToolPaths(self):
+        """Check TOOL_PATHS is sorted."""
+        # This assumes dictionary key ordering matches insertion/definition
+        # order which Python 3.7+ has codified.
+        # https://docs.python.org/3.7/library/stdtypes.html#dict
+        self.assertEqual(list(rh.hooks.TOOL_PATHS), sorted(rh.hooks.TOOL_PATHS))
+
+    def testSortedBuiltinHooks(self):
+        """Check BUILTIN_HOOKS is sorted."""
+        # This assumes dictionary key ordering matches insertion/definition
+        # order which Python 3.7+ has codified.
+        # https://docs.python.org/3.7/library/stdtypes.html#dict
+        self.assertEqual(
+            list(rh.hooks.BUILTIN_HOOKS), sorted(rh.hooks.BUILTIN_HOOKS))
 
 
 @mock.patch.object(rh.utils, 'run')
