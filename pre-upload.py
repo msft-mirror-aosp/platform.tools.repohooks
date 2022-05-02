@@ -94,7 +94,7 @@ class Output(object):
           commit: commit hash.
           commit_summary: commit summary.
         """
-        status_line = '[%s %s] %s' % (self.COMMIT, commit[0:12], commit_summary)
+        status_line = f'[{self.COMMIT} {commit[0:12]}] {commit_summary}'
         rh.terminal.print_status_line(status_line, print_newline=True)
         self.hook_index = 1
 
@@ -106,8 +106,8 @@ class Output(object):
         """
         self._curr_hook_name = hook_name
         self.hook_start_time = datetime.datetime.now()
-        status_line = '[%s %d/%d] %s' % (self.RUNNING, self.hook_index,
-                                         self.num_hooks, hook_name)
+        status_line = (f'[{self.RUNNING} {self.hook_index}/{self.num_hooks}] '
+                       f'{hook_name}')
         self.hook_index += 1
         rh.terminal.print_status_line(status_line)
 
@@ -115,11 +115,11 @@ class Output(object):
         """Finish processing any per-hook state."""
         duration = datetime.datetime.now() - self.hook_start_time
         if duration >= self._SLOW_HOOK_DURATION:
+            d = rh.utils.timedelta_str(duration)
             self.hook_warning(
-                'This hook took %s to finish which is fairly slow for '
+                f'This hook took {d} to finish which is fairly slow for '
                 'developers.\nPlease consider moving the check to the '
-                'server/CI system instead.' %
-                (rh.utils.timedelta_str(duration),))
+                'server/CI system instead.')
 
     def hook_error(self, error):
         """Print an error for a single hook.
@@ -135,7 +135,7 @@ class Output(object):
         Args:
           warning: warning string.
         """
-        status_line = '[%s] %s' % (self.WARNING, self._curr_hook_name)
+        status_line = f'[{self.WARNING}] {self._curr_hook_name}'
         rh.terminal.print_status_line(status_line, print_newline=True)
         print(warning, file=sys.stderr)
 
@@ -146,19 +146,19 @@ class Output(object):
           header: A unique identifier for the source of this error.
           error: error string.
         """
-        status_line = '[%s] %s' % (self.FAILED, header)
+        status_line = f'[{self.FAILED}] {header}'
         rh.terminal.print_status_line(status_line, print_newline=True)
         print(error, file=sys.stderr)
         self.success = False
 
     def finish(self):
         """Print summary for all the hooks."""
-        status_line = '[%s] repohooks for %s %s in %s' % (
-            self.PASSED if self.success else self.FAILED,
-            self.project_name,
-            'passed' if self.success else 'failed',
-            rh.utils.timedelta_str(datetime.datetime.now() - self.start_time))
-        rh.terminal.print_status_line(status_line, print_newline=True)
+        header = self.PASSED if self.success else self.FAILED
+        status = 'passed' if self.success else 'failed'
+        d = rh.utils.timedelta_str(datetime.datetime.now() - self.start_time)
+        rh.terminal.print_status_line(
+            f'[{header}] repohooks for {self.project_name} {status} in {d}',
+            print_newline=True)
 
 
 def _process_hook_results(results):
@@ -185,9 +185,9 @@ def _process_hook_results(results):
         if result:
             ret = ''
             if result.files:
-                ret += '  FILES: %s' % (result.files,)
+                ret += f'  FILES: {result.files}'
             lines = result.error.splitlines()
-            ret += '\n'.join('    %s' % (x,) for x in lines)
+            ret += '\n'.join(f'    {x}' for x in lines)
             if result.is_warning():
                 has_warning = True
                 warning_ret += ret
@@ -233,15 +233,15 @@ def _attempt_fixes(fixup_func_list, commit_list):
         # merge conflict resolution). Refuse to run the fix in those cases.
         return
 
-    prompt = ('An automatic fix can be attempted for the "%s" hook. '
-              'Do you want to run it?' % hook_name)
+    prompt = (f'An automatic fix can be attempted for the "{hook_name}" hook. '
+              'Do you want to run it?')
     if not rh.terminal.boolean_prompt(prompt):
         return
 
     result = fixup_func()
     if result:
-        print('Attempt to fix "%s" for commit "%s" failed: %s' %
-              (hook_name, commit, result),
+        print(f'Attempt to fix "{hook_name}" for commit "{commit}" failed: '
+              f'{result}',
               file=sys.stderr)
     else:
         print('Fix successfully applied. Amend the current commit before '
@@ -281,8 +281,7 @@ def _run_project_hooks_in_cwd(project_name, proj_dir, output, commit_list=None):
         upstream_branch = rh.git.get_upstream_branch()
     except rh.utils.CalledProcessError as e:
         output.error('Upstream remote/tracking branch lookup',
-                     '%s\nDid you run repo start?  Is your HEAD detached?' %
-                     (e,))
+                     f'{e}\nDid you run repo start?  Is your HEAD detached?')
         return False
 
     project = rh.Project(name=project_name, dir=proj_dir, remote=remote)
@@ -358,11 +357,11 @@ def _run_project_hooks(project_name, proj_dir=None, commit_list=None):
         result = rh.utils.run(cmd, capture_output=True)
         proj_dirs = result.stdout.split()
         if not proj_dirs:
-            print('%s cannot be found.' % project_name, file=sys.stderr)
+            print(f'{project_name} cannot be found.', file=sys.stderr)
             print('Please specify a valid project.', file=sys.stderr)
             return False
         if len(proj_dirs) > 1:
-            print('%s is associated with multiple directories.' % project_name,
+            print(f'{project_name} is associated with multiple directories.',
                   file=sys.stderr)
             print('Please specify a directory to help disambiguate.',
                   file=sys.stderr)
@@ -409,9 +408,9 @@ def main(project_list, worktree_list=None, **_kwargs):
 
     if found_error:
         color = rh.terminal.Color()
-        print('%s: Preupload failed due to above error(s).\n'
-              'For more info, please see:\n%s' %
-              (color.color(color.RED, 'FATAL'), REPOHOOKS_URL),
+        print(color.color(color.RED, 'FATAL') +
+              ': Preupload failed due to above error(s).\n'
+              f'For more info, please see:\n{REPOHOOKS_URL}',
               file=sys.stderr)
         sys.exit(1)
 
@@ -461,16 +460,16 @@ def direct_main(argv):
             parser.error('The current directory is not part of a git project.')
         opts.dir = os.path.dirname(os.path.abspath(git_dir))
     elif not os.path.isdir(opts.dir):
-        parser.error('Invalid dir: %s' % opts.dir)
+        parser.error(f'Invalid dir: {opts.dir}')
     elif not rh.git.is_git_repository(opts.dir):
-        parser.error('Not a git repository: %s' % opts.dir)
+        parser.error(f'Not a git repository: {opts.dir}')
 
     # Identify the project if it wasn't specified; this _requires_ the repo
     # tool to be installed and for the project to be part of a repo checkout.
     if not opts.project:
         opts.project = _identify_project(opts.dir)
         if not opts.project:
-            parser.error("Repo couldn't identify the project of %s" % opts.dir)
+            parser.error(f"Repo couldn't identify the project of {opts.dir}")
 
     if _run_project_hooks(opts.project, proj_dir=opts.dir,
                           commit_list=opts.commits):
