@@ -1042,10 +1042,10 @@ BUILTIN_HOOKS = {
     'commit_msg_bug_field': check_commit_msg_bug_field,
     'commit_msg_changeid_field': check_commit_msg_changeid_field,
     'commit_msg_prebuilt_apk_fields': check_commit_msg_prebuilt_apk_fields,
-    'commit_msg_test_field': check_commit_msg_test_field,
     'commit_msg_relnote_field_format': check_commit_msg_relnote_field_format,
     'commit_msg_relnote_for_current_txt':
         check_commit_msg_relnote_for_current_txt,
+    'commit_msg_test_field': check_commit_msg_test_field,
     'cpplint': check_cpplint,
     'gofmt': check_gofmt,
     'google_java_format': check_google_java_format,
