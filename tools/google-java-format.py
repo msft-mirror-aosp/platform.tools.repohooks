@@ -66,19 +66,17 @@ def main(argv):
     # https://github.com/google/google-java-format/issues/108
     format_path = find_executable(opts.google_java_format)
     if not format_path:
-        print('Unable to find google-java-format at %s' %
-              opts.google_java_format)
+        print('Unable to find google-java-format at: {opts.google_java_format}',
+              file=sys.stderr)
         return 1
 
     extra_env = {
-        'PATH': '%s%s%s' % (os.path.dirname(format_path),
-                            os.pathsep,
-                            os.environ['PATH'])
+        'PATH': os.path.dirname(format_path) + os.pathsep + os.environ['PATH'],
     }
 
     # TODO: Delegate to the tool once this issue is resolved:
     # https://github.com/google/google-java-format/issues/107
-    diff_cmd = ['git', 'diff', '--no-ext-diff', '-U0', '%s^!' % opts.commit]
+    diff_cmd = ['git', 'diff', '--no-ext-diff', '-U0', f'{opts.commit}^!']
     diff_cmd.extend(['--'] + opts.files)
     diff = rh.utils.run(diff_cmd, capture_output=True).stdout
 
@@ -92,8 +90,7 @@ def main(argv):
                           extra_env=extra_env).stdout
     if stdout:
         print('One or more files in your commit have Java formatting errors.')
-        print('You can run `%s --fix %s` to fix this' %
-              (sys.argv[0], rh.shell.cmd_to_str(argv)))
+        print('You can run: {sys.argv[0]} --fix {rh.shell.cmd_to_str(argv)}')
         return 1
 
     return 0
