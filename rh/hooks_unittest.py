@@ -776,6 +776,30 @@ class BuiltinHooksTests(unittest.TestCase):
 
         # TODO: Actually pass some valid/invalid json data down.
 
+    def test_ktfmt(self, mock_check, _mock_run):
+        """Verify the ktfmt builtin hook."""
+        # First call should do nothing as there are no files to check.
+        ret = rh.hooks.check_ktfmt(
+            self.project, 'commit', 'desc', (), options=self.options)
+        self.assertIsNone(ret)
+        self.assertFalse(mock_check.called)
+        # Check that .kt files are included by default.
+        diff = [rh.git.RawDiffEntry(file='foo.kt'),
+                rh.git.RawDiffEntry(file='bar.java'),
+                rh.git.RawDiffEntry(file='baz/blah.kt')]
+        ret = rh.hooks.check_ktfmt(
+            self.project, 'commit', 'desc', diff, options=self.options)
+        self.assertListEqual(ret[0].files, ['/.../repo/dir/foo.kt',
+                                            '/.../repo/dir/baz/blah.kt'])
+        diff = [rh.git.RawDiffEntry(file='foo/f1.kt'),
+                rh.git.RawDiffEntry(file='bar/f2.kt'),
+                rh.git.RawDiffEntry(file='baz/f2.kt')]
+        ret = rh.hooks.check_ktfmt(self.project, 'commit', 'desc', diff,
+                                   options=rh.hooks.HookOptions('hook name', [
+                                       '--include-dirs=foo,baz'], {}))
+        self.assertListEqual(ret[0].files, ['/.../repo/dir/foo/f1.kt',
+                                            '/.../repo/dir/baz/f2.kt'])
+
     def test_pylint(self, mock_check, _mock_run):
         """Verify the pylint builtin hook."""
         self._test_file_filter(mock_check, rh.hooks.check_pylint2,
