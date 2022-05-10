@@ -66,8 +66,10 @@ def main(argv):
     # https://github.com/google/google-java-format/issues/108
     format_path = find_executable(opts.google_java_format)
     if not format_path:
-        print('Unable to find google-java-format at: {opts.google_java_format}',
-              file=sys.stderr)
+        print(
+            f'Unable to find google-java-format at: {opts.google_java_format}',
+            file=sys.stderr
+        )
         return 1
 
     extra_env = {
@@ -90,7 +92,7 @@ def main(argv):
                           extra_env=extra_env).stdout
     if stdout:
         print('One or more files in your commit have Java formatting errors.')
-        print('You can run: {sys.argv[0]} --fix {rh.shell.cmd_to_str(argv)}')
+        print(f'You can run: {sys.argv[0]} --fix {rh.shell.cmd_to_str(argv)}')
         return 1
 
     return 0
