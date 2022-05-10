@@ -48,7 +48,7 @@ class HooksDocsTests(unittest.TestCase):
         """Extract the |section| text out of the readme."""
         ret = []
         in_section = False
-        with open(self.readme) as fp:
+        with open(self.readme, encoding='utf-8') as fp:
             for line in fp:
                 if not in_section:
                     # Look for the section like "## [Tool Paths]".
@@ -66,22 +66,22 @@ class HooksDocsTests(unittest.TestCase):
         """Verify builtin hooks are documented."""
         data = self._grab_section('[Builtin Hooks]')
         for hook in rh.hooks.BUILTIN_HOOKS:
-            self.assertIn('* `%s`:' % (hook,), data,
-                          msg='README.md missing docs for hook "%s"' % (hook,))
+            self.assertIn(f'* `{hook}`:', data,
+                          msg=f'README.md missing docs for hook "{hook}"')
 
     def testToolPaths(self):
         """Verify tools are documented."""
         data = self._grab_section('[Tool Paths]')
         for tool in rh.hooks.TOOL_PATHS:
-            self.assertIn('* `%s`:' % (tool,), data,
-                          msg='README.md missing docs for tool "%s"' % (tool,))
+            self.assertIn(f'* `{tool}`:', data,
+                          msg=f'README.md missing docs for tool "{tool}"')
 
     def testPlaceholders(self):
         """Verify placeholder replacement vars are documented."""
         data = self._grab_section('Placeholders')
         for var in rh.hooks.Placeholders.vars():
-            self.assertIn('* `${%s}`:' % (var,), data,
-                          msg='README.md missing docs for var "%s"' % (var,))
+            self.assertIn('* `${' + var + '}`:', data,
+                          msg=f'README.md missing docs for var "{var}"')
 
 
 class PlaceholderTests(unittest.TestCase):
@@ -149,8 +149,8 @@ class PlaceholderTests(unittest.TestCase):
     def testTheTester(self):
         """Make sure we have a test for every variable."""
         for var in self.replacer.vars():
-            self.assertIn('test%s' % (var,), dir(self),
-                          msg='Missing unittest for variable %s' % (var,))
+            self.assertIn(f'test{var}', dir(self),
+                          msg=f'Missing unittest for variable {var}')
 
     def testPREUPLOAD_COMMIT_MESSAGE(self):
         """Verify handling of PREUPLOAD_COMMIT_MESSAGE."""
@@ -212,7 +212,7 @@ class HookOptionsTests(unittest.TestCase):
 
         # At least one replacement.  Most real testing is in PlaceholderTests.
         args = ['who', 'goes', 'there ?', '${BUILD_OS} is great']
-        exp_args = ['who', 'goes', 'there ?', '%s is great' % (m.return_value,)]
+        exp_args = ['who', 'goes', 'there ?', f'{m.return_value} is great']
         self.assertEqual(exp_args, rh.hooks.HookOptions.expand_vars(args))
 
     def testArgs(self):
@@ -267,6 +267,20 @@ class UtilsTests(unittest.TestCase):
         self.assertTrue(isinstance(ret, str))
         self.assertNotEqual(ret, '')
 
+    def testSortedToolPaths(self):
+        """Check TOOL_PATHS is sorted."""
+        # This assumes dictionary key ordering matches insertion/definition
+        # order which Python 3.7+ has codified.
+        # https://docs.python.org/3.7/library/stdtypes.html#dict
+        self.assertEqual(list(rh.hooks.TOOL_PATHS), sorted(rh.hooks.TOOL_PATHS))
+
+    def testSortedBuiltinHooks(self):
+        """Check BUILTIN_HOOKS is sorted."""
+        # This assumes dictionary key ordering matches insertion/definition
+        # order which Python 3.7+ has codified.
+        # https://docs.python.org/3.7/library/stdtypes.html#dict
+        self.assertEqual(
+            list(rh.hooks.BUILTIN_HOOKS), sorted(rh.hooks.BUILTIN_HOOKS))
 
 
 @mock.patch.object(rh.utils, 'run')
@@ -296,10 +310,10 @@ class BuiltinHooksTests(unittest.TestCase):
             ret = func(self.project, 'commit', desc, diff, options=self.options)
             if accept:
                 self.assertFalse(
-                    bool(ret), msg='Should have accepted: {{{%s}}}' % (desc,))
+                    bool(ret), msg='Should have accepted: {{{' + desc + '}}}')
             else:
                 self.assertTrue(
-                    bool(ret), msg='Should have rejected: {{{%s}}}' % (desc,))
+                    bool(ret), msg='Should have rejected: {{{' + desc + '}}}')
 
     def _test_file_filter(self, mock_check, func, files):
         """Helper for testing hooks that filter by files and run external tools.
@@ -322,8 +336,8 @@ class BuiltinHooksTests(unittest.TestCase):
     def testTheTester(self, _mock_check, _mock_run):
         """Make sure we have a test for every hook."""
         for hook in rh.hooks.BUILTIN_HOOKS:
-            self.assertIn('test_%s' % (hook,), dir(self),
-                          msg='Missing unittest for builtin hook %s' % (hook,))
+            self.assertIn(f'test_{hook}', dir(self),
+                          msg=f'Missing unittest for builtin hook {hook}')
 
     def test_bpfmt(self, mock_check, _mock_run):
         """Verify the bpfmt builtin hook."""
@@ -775,6 +789,30 @@ class BuiltinHooksTests(unittest.TestCase):
         self.assertFalse(mock_check.called)
 
         # TODO: Actually pass some valid/invalid json data down.
+
+    def test_ktfmt(self, mock_check, _mock_run):
+        """Verify the ktfmt builtin hook."""
+        # First call should do nothing as there are no files to check.
+        ret = rh.hooks.check_ktfmt(
+            self.project, 'commit', 'desc', (), options=self.options)
+        self.assertIsNone(ret)
+        self.assertFalse(mock_check.called)
+        # Check that .kt files are included by default.
+        diff = [rh.git.RawDiffEntry(file='foo.kt'),
+                rh.git.RawDiffEntry(file='bar.java'),
+                rh.git.RawDiffEntry(file='baz/blah.kt')]
+        ret = rh.hooks.check_ktfmt(
+            self.project, 'commit', 'desc', diff, options=self.options)
+        self.assertListEqual(ret[0].files, ['/.../repo/dir/foo.kt',
+                                            '/.../repo/dir/baz/blah.kt'])
+        diff = [rh.git.RawDiffEntry(file='foo/f1.kt'),
+                rh.git.RawDiffEntry(file='bar/f2.kt'),
+                rh.git.RawDiffEntry(file='baz/f2.kt')]
+        ret = rh.hooks.check_ktfmt(self.project, 'commit', 'desc', diff,
+                                   options=rh.hooks.HookOptions('hook name', [
+                                       '--include-dirs=foo,baz'], {}))
+        self.assertListEqual(ret[0].files, ['/.../repo/dir/foo/f1.kt',
+                                            '/.../repo/dir/baz/f2.kt'])
 
     def test_pylint(self, mock_check, _mock_run):
         """Verify the pylint builtin hook."""
