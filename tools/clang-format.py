@@ -75,14 +75,14 @@ def main(argv):
     if opts.extensions:
         cmd.extend(['--extensions', opts.extensions])
     if not opts.working_tree:
-        cmd.extend(['%s^' % opts.commit, opts.commit])
+        cmd.extend([f'{opts.commit}^', opts.commit])
     cmd.extend(['--'] + opts.files)
 
     # Fail gracefully if clang-format itself aborts/fails.
     try:
         result = rh.utils.run(cmd, capture_output=True)
     except rh.utils.CalledProcessError as e:
-        print('clang-format failed:\n%s' % (e,), file=sys.stderr)
+        print(f'clang-format failed:\n{e}', file=sys.stderr)
         print('\nPlease report this to the clang team.', file=sys.stderr)
         return 1
 
@@ -110,9 +110,9 @@ def main(argv):
         else:
             print('The following files have formatting errors:')
             for filename in diff_filenames:
-                print('\t%s' % filename)
-            print('You can try to fix this by running:\n%s --fix %s' %
-                  (sys.argv[0], rh.shell.cmd_to_str(argv)))
+                print(f'\t{filename}')
+            print('You can try to fix this by running:\n'
+                  f'{sys.argv[0]} --fix {rh.shell.cmd_to_str(argv)}')
             return 1
 
     return 0
