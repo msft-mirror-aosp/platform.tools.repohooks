@@ -35,7 +35,7 @@ def get_upstream_remote():
     branch = result.stdout.strip()
 
     # Then get the remote associated with this branch.
-    cmd = ['git', 'config', 'branch.%s.remote' % branch]
+    cmd = ['git', 'config', f'branch.{branch}.remote']
     result = rh.utils.run(cmd, capture_output=True)
     return result.stdout.strip()
 
@@ -52,14 +52,14 @@ def get_upstream_branch():
     if not current_branch:
         raise ValueError('Need to be on a tracking branch')
 
-    cfg_option = 'branch.' + current_branch + '.%s'
-    cmd = ['git', 'config', cfg_option % 'merge']
+    cfg_option = 'branch.' + current_branch + '.'
+    cmd = ['git', 'config', cfg_option + 'merge']
     result = rh.utils.run(cmd, capture_output=True)
     full_upstream = result.stdout.strip()
     # If remote is not fully qualified, add an implicit namespace.
     if '/' not in full_upstream:
-        full_upstream = 'refs/heads/%s' % full_upstream
-    cmd = ['git', 'config', cfg_option % 'remote']
+        full_upstream = f'refs/heads/{full_upstream}'
+    cmd = ['git', 'config', cfg_option + 'remote']
     result = rh.utils.run(cmd, capture_output=True)
     remote = result.stdout.strip()
     if not remote or not full_upstream:
@@ -77,7 +77,7 @@ def get_commit_for_ref(ref):
 
 def get_remote_revision(ref, remote):
     """Returns the remote revision for this ref."""
-    prefix = 'refs/remotes/%s/' % remote
+    prefix = f'refs/remotes/{remote}/'
     if ref.startswith(prefix):
         return ref[len(prefix):]
     return ref
@@ -99,7 +99,7 @@ def get_file_content(commit, path):
     a full file, you should check that first.  One way to detect is that the
     content will not have any newlines.
     """
-    cmd = ['git', 'show', '%s:%s' % (commit, path)]
+    cmd = ['git', 'show', f'{commit}:{path}']
     return rh.utils.run(cmd, capture_output=True).stdout
 
 
@@ -147,7 +147,7 @@ def raw_diff(path, target):
     for line in diff_lines:
         match = DIFF_RE.match(line)
         if not match:
-            raise ValueError('Failed to parse diff output: %s' % line)
+            raise ValueError(f'Failed to parse diff output: {line}')
         rawdiff = RawDiffEntry(**match.groupdict())
         rawdiff.src_mode = int(rawdiff.src_mode)
         rawdiff.dst_mode = int(rawdiff.dst_mode)
@@ -164,12 +164,12 @@ def get_affected_files(commit):
     Returns:
       A list of modified/added (and perhaps deleted) files
     """
-    return raw_diff(os.getcwd(), '%s^-' % commit)
+    return raw_diff(os.getcwd(), f'{commit}^-')
 
 
 def get_commits(ignore_merged_commits=False):
     """Returns a list of commits for this review."""
-    cmd = ['git', 'rev-list', '%s..' % get_upstream_branch()]
+    cmd = ['git', 'rev-list', f'{get_upstream_branch()}..']
     if ignore_merged_commits:
         cmd.append('--first-parent')
     return rh.utils.run(cmd, capture_output=True).stdout.split()
@@ -191,7 +191,7 @@ def find_repo_root(path=None):
     while not os.path.exists(os.path.join(path, '.repo')):
         path = os.path.dirname(path)
         if path == '/':
-            raise ValueError('Could not locate .repo in %s' % orig_path)
+            raise ValueError(f'Could not locate .repo in {orig_path}')
 
     return path
 
