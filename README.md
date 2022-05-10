@@ -193,6 +193,9 @@ canned hooks already included geared towards AOSP style guidelines.
 * `google_java_format`: Run Java code through
   [`google-java-format`](https://github.com/google/google-java-format)
 * `jsonlint`: Verify JSON code is sane.
+* `ktfmt`: Run Kotlin code through `ktfmt`. Supports an additional option
+  --include-dirs, which if specified will limit enforcement to only files under
+  the specified directories.
 * `pylint`: Alias of `pylint2`.  Will change to `pylint3` by end of 2019.
 * `pylint2`: Run Python code through `pylint` using Python 2.
 * `pylint3`: Run Python code through `pylint` using Python 3.
@@ -274,6 +277,7 @@ distros/versions.  The following tools are recognized:
 * `gofmt`: used for the `gofmt` builtin hook.
 * `google-java-format`: used for the `google_java_format` builtin hook.
 * `google-java-format-diff`: used for the `google_java_format` builtin hook.
+* `ktfmt`: used for the `ktfmt` builtin hook.
 * `pylint`: used for the `pylint` builtin hook.
 * `rustfmt`: used for the `rustfmt` builtin hook.
 
