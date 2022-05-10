@@ -189,7 +189,7 @@ def main(argv):
                     json_data = file.read()
             process_file(json_data)
     except:
-        print('Visit {_TEST_MAPPING_URL} for details about the format of '
+        print(f'Visit {_TEST_MAPPING_URL} for details about the format of '
               'TEST_MAPPING file.', file=sys.stderr)
         raise
 

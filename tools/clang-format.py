@@ -112,7 +112,7 @@ def main(argv):
             for filename in diff_filenames:
                 print(f'\t{filename}')
             print('You can try to fix this by running:\n'
-                  '{sys.argv[0]} --fix {rh.shell.cmd_to_str(argv)}')
+                  f'{sys.argv[0]} --fix {rh.shell.cmd_to_str(argv)}')
             return 1
 
     return 0
