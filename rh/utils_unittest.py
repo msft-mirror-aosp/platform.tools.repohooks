@@ -152,13 +152,13 @@ class RunCommandTests(unittest.TestCase):
     def test_stdout_utf8(self):
         """Verify reading UTF-8 data works."""
         ret = rh.utils.run(['printf', r'\xc3\x9f'], redirect_stdout=True)
-        self.assertEqual(u'ß', ret.stdout)
+        self.assertEqual('ß', ret.stdout)
         self.assertIsNone(ret.stderr)
 
     def test_stdin_utf8(self):
         """Verify writing UTF-8 data works."""
-        ret = rh.utils.run(['cat'], redirect_stdout=True, input=u'ß')
-        self.assertEqual(u'ß', ret.stdout)
+        ret = rh.utils.run(['cat'], redirect_stdout=True, input='ß')
+        self.assertEqual('ß', ret.stdout)
         self.assertIsNone(ret.stderr)
 
     def test_check_false(self):
