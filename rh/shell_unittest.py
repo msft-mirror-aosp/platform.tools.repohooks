@@ -40,8 +40,8 @@ class DiffTestCase(unittest.TestCase):
     def _assertEqual(self, func, test_input, test_output, result):
         """Like assertEqual but with built in diff support."""
         diff = '\n'.join(list(self.differ.compare([test_output], [result])))
-        msg = ('Expected %s to translate %r to %r, but got %r\n%s' %
-               (func, test_input, test_output, result, diff))
+        msg = (f'Expected {func} to translate {test_input!r} to '
+               f'{test_output!r}, but got {result!r}\n{diff}')
         self.assertEqual(test_output, result, msg)
 
     def _testData(self, functor, tests, check_type=True):
@@ -65,8 +65,8 @@ class ShellQuoteTest(DiffTestCase):
         # Dict of expected output strings to input lists.
         tests_quote = {
             "''": '',
-            'a': u'a',
-            "'a b c'": u'a b c',
+            'a': 'a',
+            "'a b c'": 'a b c',
             "'a\tb'": 'a\tb',
             "'/a$file'": '/a$file',
             "'/a#file'": '/a#file',
@@ -105,7 +105,7 @@ class CmdToStrTest(DiffTestCase):
             r"'a b' c": ['a b', 'c'],
             r'''a "b'c"''': ['a', "b'c"],
             r'''a "/'\$b" 'a b c' "xy'z"''':
-                [u'a', "/'$b", 'a b c', "xy'z"],
+                ['a', "/'$b", 'a b c', "xy'z"],
             '': [],
         }
         self._testData(rh.shell.cmd_to_str, tests)
