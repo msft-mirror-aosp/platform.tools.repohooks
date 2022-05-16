@@ -181,17 +181,41 @@ def get_commit_desc(commit):
     return rh.utils.run(cmd, capture_output=True).stdout
 
 
-def find_repo_root(path=None):
-    """Locate the top level of this repo checkout starting at |path|."""
+def find_repo_root(path=None, outer=False):
+    """Locate the top level of this repo checkout starting at |path|.
+
+    Args:
+      outer: Whether to find the outermost manifest, or the sub-manifest.
+    """
     if path is None:
         path = os.getcwd()
     orig_path = path
 
     path = os.path.abspath(path)
+
+    # If we are working on a superproject instead of a repo client, use the
+    # result from git directly.  For regular repo client, this would return
+    # empty string.
+    cmd = ['git', 'rev-parse', '--show-superproject-working-tree']
+    git_worktree_path = rh.utils.run(cmd, cwd=path, capture_output=True).stdout.strip()
+    if git_worktree_path:
+        return git_worktree_path
+
     while not os.path.exists(os.path.join(path, '.repo')):
         path = os.path.dirname(path)
         if path == '/':
             raise ValueError(f'Could not locate .repo in {orig_path}')
+
+    root = path
+    if not outer and os.path.isdir(os.path.join(root, '.repo', 'submanifests')):
+        # If there are submanifests, walk backward from path until we find the
+        # corresponding submanifest root.
+        abs_orig_path = os.path.abspath(orig_path)
+        parts = os.path.relpath(abs_orig_path, root).split(os.path.sep)
+        while parts and not os.path.isdir(
+            os.path.join(root, '.repo', 'submanifests', *parts, 'manifests')):
+            parts.pop()
+        path = os.path.join(root, *parts)
 
     return path
 
