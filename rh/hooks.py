@@ -130,8 +130,13 @@ class Placeholders(object):
 
     @property
     def var_REPO_ROOT(self):
-        """The root of the repo checkout."""
+        """The root of the repo (sub-manifest) checkout."""
         return rh.git.find_repo_root()
+
+    @property
+    def var_REPO_OUTER_ROOT(self):
+        """The root of the repo (outer) checkout."""
+        return rh.git.find_repo_root(outer=True)
 
     @property
     def var_BUILD_OS(self):
