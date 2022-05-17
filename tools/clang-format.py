@@ -75,14 +75,18 @@ def main(argv):
     if opts.extensions:
         cmd.extend(['--extensions', opts.extensions])
     if not opts.working_tree:
-        cmd.extend(['%s^' % opts.commit, opts.commit])
+        cmd.extend([f'{opts.commit}^', opts.commit])
     cmd.extend(['--'] + opts.files)
 
     # Fail gracefully if clang-format itself aborts/fails.
-    try:
-        result = rh.utils.run(cmd, capture_output=True)
-    except rh.utils.CalledProcessError as e:
-        print('clang-format failed:\n%s' % (e,), file=sys.stderr)
+    result = rh.utils.run(cmd, capture_output=True, check=False)
+    # Newer versions of git-clang-format will exit 1 when it worked.  Assume a
+    # real failure is any exit code above 1, or any time stderr is used, or if
+    # it exited 0/1 but didn't produce anything useful to stdout.
+    if result.returncode > 1 or result.stderr or not result.stdout:
+        print(f'clang-format failed:\ncmd: {result.cmdstr}\n'
+              f'stdout:\n{result.stdout}\nstderr:\n{result.stderr}',
+              file=sys.stderr)
         print('\nPlease report this to the clang team.', file=sys.stderr)
         return 1
 
@@ -110,9 +114,9 @@ def main(argv):
         else:
             print('The following files have formatting errors:')
             for filename in diff_filenames:
-                print('\t%s' % filename)
-            print('You can try to fix this by running:\n%s --fix %s' %
-                  (sys.argv[0], rh.shell.cmd_to_str(argv)))
+                print(f'\t{filename}')
+            print('You can try to fix this by running:\n'
+                  f'{sys.argv[0]} --fix {rh.shell.cmd_to_str(argv)}')
             return 1
 
     return 0
