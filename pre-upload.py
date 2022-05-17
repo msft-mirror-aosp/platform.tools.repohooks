@@ -199,17 +199,24 @@ def _process_hook_results(results):
             warning_ret if has_warning else None)
 
 
-def _get_project_config():
+def _get_project_config(from_git=False):
     """Returns the configuration for a project.
 
+    Args:
+      from_git: If true, we are called from git directly and repo should not be
+          used.
     Expects to be called from within the project root.
     """
-    global_paths = (
-        # Load the global config found in the manifest repo.
-        os.path.join(rh.git.find_repo_root(), '.repo', 'manifests'),
-        # Load the global config found in the root of the repo checkout.
-        rh.git.find_repo_root(),
-    )
+    if from_git:
+        global_paths = (rh.git.find_repo_root(),)
+    else:
+        global_paths = (
+            # Load the global config found in the manifest repo.
+            (os.path.join(rh.git.find_repo_root(), '.repo', 'manifests')),
+            # Load the global config found in the root of the repo checkout.
+            rh.git.find_repo_root(),
+        )
+
     paths = (
         # Load the config for this git repo.
         '.',
@@ -248,13 +255,15 @@ def _attempt_fixes(fixup_func_list, commit_list):
               'attempting to upload again.\n', file=sys.stderr)
 
 
-def _run_project_hooks_in_cwd(project_name, proj_dir, output, commit_list=None):
+def _run_project_hooks_in_cwd(project_name, proj_dir, output, from_git=False, commit_list=None):
     """Run the project-specific hooks in the cwd.
 
     Args:
       project_name: The name of this project.
       proj_dir: The directory for this project (for passing on in metadata).
       output: Helper for summarizing output/errors to the user.
+      from_git: If true, we are called from git directly and repo should not be
+          used.
       commit_list: A list of commits to run hooks against.  If None or empty
           list then we'll automatically get the list of commits that would be
           uploaded.
@@ -263,7 +272,7 @@ def _run_project_hooks_in_cwd(project_name, proj_dir, output, commit_list=None):
       False if any errors were found, else True.
     """
     try:
-        config = _get_project_config()
+        config = _get_project_config(from_git)
     except rh.config.ValidationError as e:
         output.error('Loading config files', str(e))
         return False
@@ -336,13 +345,15 @@ def _run_project_hooks_in_cwd(project_name, proj_dir, output, commit_list=None):
     return ret
 
 
-def _run_project_hooks(project_name, proj_dir=None, commit_list=None):
+def _run_project_hooks(project_name, proj_dir=None, from_git=False, commit_list=None):
     """Run the project-specific hooks in |proj_dir|.
 
     Args:
       project_name: The name of project to run hooks for.
       proj_dir: If non-None, this is the directory the project is in.  If None,
           we'll ask repo.
+      from_git: If true, we are called from git directly and repo should not be
+          used.
       commit_list: A list of commits to run hooks against.  If None or empty
           list then we'll automatically get the list of commits that would be
           uploaded.
@@ -373,6 +384,7 @@ def _run_project_hooks(project_name, proj_dir=None, commit_list=None):
         # Hooks assume they are run from the root of the project.
         os.chdir(proj_dir)
         return _run_project_hooks_in_cwd(project_name, proj_dir, output,
+                                         from_git=from_git,
                                          commit_list=commit_list)
     finally:
         output.finish()
@@ -415,15 +427,28 @@ def main(project_list, worktree_list=None, **_kwargs):
         sys.exit(1)
 
 
-def _identify_project(path):
+def _identify_project(path, from_git=False):
     """Identify the repo project associated with the given path.
 
     Returns:
       A string indicating what project is associated with the path passed in or
       a blank string upon failure.
     """
-    cmd = ['repo', 'forall', '.', '-c', 'echo ${REPO_PROJECT}']
-    return rh.utils.run(cmd, capture_output=True, cwd=path).stdout.strip()
+    if from_git:
+        cmd = ['git', 'rev-parse', '--show-toplevel']
+        project_path = rh.utils.run(cmd, capture_output=True).stdout.strip()
+        cmd = ['git', 'rev-parse', '--show-superproject-working-tree']
+        superproject_path = rh.utils.run(cmd, capture_output=True).stdout.strip()
+        module_path = project_path[len(superproject_path) + 1:]
+        cmd = ['git', 'config', '-f', '.gitmodules',
+               '--name-only', '--get-regexp', '^submodule\..*\.path$',
+               f"^{module_path}$"]
+        module_name = rh.utils.run(cmd, cwd=superproject_path,
+                                   capture_output=True).stdout.strip()
+        return module_name[len('submodule.'):-len(".path")]
+    else:
+        cmd = ['repo', 'forall', '.', '-c', 'echo ${REPO_PROJECT}']
+        return rh.utils.run(cmd, capture_output=True, cwd=path).stdout.strip()
 
 
 def direct_main(argv):
@@ -439,6 +464,8 @@ def direct_main(argv):
       BadInvocation: On some types of invocation errors.
     """
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--git', action='store_true',
+                        help='This hook is called from git instead of repo')
     parser.add_argument('--dir', default=None,
                         help='The directory that the project lives in.  If not '
                         'specified, use the git project root based on the cwd.')
@@ -467,11 +494,11 @@ def direct_main(argv):
     # Identify the project if it wasn't specified; this _requires_ the repo
     # tool to be installed and for the project to be part of a repo checkout.
     if not opts.project:
-        opts.project = _identify_project(opts.dir)
+        opts.project = _identify_project(opts.dir, opts.git)
         if not opts.project:
-            parser.error(f"Repo couldn't identify the project of {opts.dir}")
+            parser.error(f"Couldn't identify the project of {opts.dir}")
 
-    if _run_project_hooks(opts.project, proj_dir=opts.dir,
+    if _run_project_hooks(opts.project, proj_dir=opts.dir, from_git=opts.git,
                           commit_list=opts.commits):
         return 0
     return 1
