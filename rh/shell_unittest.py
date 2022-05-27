@@ -17,6 +17,7 @@
 
 import difflib
 import os
+from pathlib import Path
 import sys
 import unittest
 
@@ -93,6 +94,18 @@ class ShellQuoteTest(DiffTestCase):
         # Test that the operations are reversible.
         self._testData(aux, {k: k for k in tests_quote.values()}, False)
         self._testData(aux, {k: k for k in tests_quote}, False)
+
+    def testPathlib(self):
+        """Verify pathlib is handled."""
+        self.assertEqual(rh.shell.shell_quote(Path('/')), '/')
+
+    def testBadInputs(self):
+        """Verify bad inputs do not crash."""
+        for arg, exp in (
+            (1234, '1234'),
+            (Exception('hi'), "Exception('hi')"),
+        ):
+            self.assertEqual(rh.shell.shell_quote(arg), exp)
 
 
 class CmdToStrTest(DiffTestCase):

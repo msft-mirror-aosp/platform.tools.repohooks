@@ -15,6 +15,7 @@
 """Functions for working with shell code."""
 
 import os
+import pathlib
 import sys
 
 _path = os.path.realpath(__file__ + '/../..')
@@ -65,8 +66,13 @@ def shell_quote(s):
     Returns:
       A safely (possibly quoted) string.
     """
+    # If callers pass down bad types, don't blow up.
     if isinstance(s, bytes):
         s = s.encode('utf-8')
+    elif isinstance(s, pathlib.PurePath):
+        return str(s)
+    elif not isinstance(s, str):
+        return repr(s)
 
     # See if no quoting is needed so we can return the string as-is.
     for c in s:
