@@ -82,8 +82,10 @@ def main(argv):
     result = rh.utils.run(cmd, capture_output=True, check=False)
     # Newer versions of git-clang-format will exit 1 when it worked.  Assume a
     # real failure is any exit code above 1, or any time stderr is used, or if
-    # it exited 0/1 but didn't produce anything useful to stdout.
-    if result.returncode > 1 or result.stderr or not result.stdout:
+    # it exited 1 but didn't produce anything useful to stdout.  If it exited 0,
+    # then assume all is well and we'll attempt to parse its output below.
+    if (result.returncode > 1 or result.stderr or
+        (not result.stdout and result.returncode)):
         print(f'clang-format failed:\ncmd: {result.cmdstr}\n'
               f'stdout:\n{result.stdout}\nstderr:\n{result.stderr}',
               file=sys.stderr)
