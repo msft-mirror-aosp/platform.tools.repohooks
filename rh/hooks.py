@@ -478,7 +478,7 @@ def check_ktfmt(project, commit, _desc, diff, options=None):
 
     include_dir_args = [x for x in options.args()
                         if x.startswith('--include-dirs=')]
-    include_dirs = [x.removeprefix('--include-dirs=').split(',')
+    include_dirs = [x[len('--include-dirs='):].split(',')
                     for x in include_dir_args]
     patterns = [fr'^{x}/.*\.kt$' for dir_list in include_dirs
                 for x in dir_list]
