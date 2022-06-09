@@ -130,8 +130,13 @@ class Placeholders(object):
 
     @property
     def var_REPO_ROOT(self):
-        """The root of the repo checkout."""
+        """The root of the repo (sub-manifest) checkout."""
         return rh.git.find_repo_root()
+
+    @property
+    def var_REPO_OUTER_ROOT(self):
+        """The root of the repo (outer) checkout."""
+        return rh.git.find_repo_root(outer=True)
 
     @property
     def var_BUILD_OS(self):
@@ -402,7 +407,7 @@ def check_ktfmt(project, commit, _desc, diff, options=None):
 
     include_dir_args = [x for x in options.args()
                         if x.startswith('--include-dirs=')]
-    include_dirs = [x.removeprefix('--include-dirs=').split(',')
+    include_dirs = [x[len('--include-dirs='):].split(',')
                     for x in include_dir_args]
     patterns = [fr'^{x}/.*\.kt$' for dir_list in include_dirs
                 for x in dir_list]
