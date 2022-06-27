@@ -26,8 +26,8 @@ import argparse
 import json
 import os
 import re
-from typing import Any, Dict
 import sys
+from typing import Any, Dict
 
 _path = os.path.realpath(__file__ + '/../..')
 if sys.path[0] != _path:
@@ -77,7 +77,7 @@ def _filter_comments(json_data: str) -> str:
         '\n' if _COMMENTS_RE.match(x) else x for x in json_data.splitlines())
 
 
-def _validate_import(entry: Dict[str, Any], test_mapping_file: str) -> None:
+def _validate_import(entry: Dict[str, Any], test_mapping_file: str):
     """Validates an import setting.
 
     Args:
@@ -141,7 +141,7 @@ def _validate_test(test: Dict[str, Any], test_mapping_file: str) -> bool:
                 f'Failed entry: {option}')
 
 
-def process_file(test_mapping_file: str) -> None:
+def process_file(test_mapping_file: str):
     """Validates a TEST_MAPPING file content."""
     try:
         test_mapping_data = json.loads(_filter_comments(test_mapping_file))
@@ -184,12 +184,13 @@ def main(argv):
             if opts.commit:
                 json_data = rh.git.get_file_content(opts.commit, filename)
             else:
-                with open(os.path.join(opts.project_dir, filename)) as file:
+                with open(os.path.join(opts.project_dir, filename),
+                          encoding='utf-8') as file:
                     json_data = file.read()
             process_file(json_data)
     except:
-        print('Visit %s for details about the format of TEST_MAPPING '
-              'file.' % _TEST_MAPPING_URL, file=sys.stderr)
+        print(f'Visit {_TEST_MAPPING_URL} for details about the format of '
+              'TEST_MAPPING file.', file=sys.stderr)
         raise
 
 
