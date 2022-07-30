@@ -26,7 +26,7 @@ del _path
 
 # We have to import our local modules after the sys.path tweak.  We can't use
 # relative imports because this is an executable program, not a module.
-# pylint: disable=wrong-import-position
+# pylint: disable=wrong-import-position,import-error
 import rh.shell
 import rh.utils
 
@@ -82,10 +82,10 @@ def main(argv):
     result = rh.utils.run(cmd, capture_output=True, check=False)
     # Newer versions of git-clang-format will exit 1 when it worked.  Assume a
     # real failure is any exit code above 1, or any time stderr is used, or if
-    # it exited 1 but didn't produce anything useful to stdout.  If it exited 0,
+    # it exited 1 and produce useful format diffs to stdout.  If it exited 0,
     # then assume all is well and we'll attempt to parse its output below.
     if (result.returncode > 1 or result.stderr or
-        (not result.stdout and result.returncode)):
+        (result.stdout and result.returncode)):
         print(f'clang-format failed:\ncmd: {result.cmdstr}\n'
               f'stdout:\n{result.stdout}\nstderr:\n{result.stderr}',
               file=sys.stderr)
