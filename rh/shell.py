@@ -15,6 +15,7 @@
 """Functions for working with shell code."""
 
 import os
+import pathlib
 import sys
 
 _path = os.path.realpath(__file__ + '/../..')
@@ -65,26 +66,31 @@ def shell_quote(s):
     Returns:
       A safely (possibly quoted) string.
     """
+    # If callers pass down bad types, don't blow up.
     if isinstance(s, bytes):
         s = s.encode('utf-8')
+    elif isinstance(s, pathlib.PurePath):
+        return str(s)
+    elif not isinstance(s, str):
+        return repr(s)
 
     # See if no quoting is needed so we can return the string as-is.
     for c in s:
         if c in _SHELL_QUOTABLE_CHARS:
             break
     else:
-        return s if s else u"''"
+        return s if s else "''"
 
     # See if we can use single quotes first.  Output is nicer.
     if "'" not in s:
-        return u"'%s'" % s
+        return f"'{s}'"
 
     # Have to use double quotes.  Escape the few chars that still expand when
     # used inside of double quotes.
     for c in _SHELL_ESCAPE_CHARS:
         if c in s:
-            s = s.replace(c, r'\%s' % c)
-    return u'"%s"' % s
+            s = s.replace(c, fr'\{c}')
+    return f'"{s}"'
 
 
 def shell_unquote(s):
@@ -157,4 +163,4 @@ def boolean_shell_value(sval, default):
         if s in ('no', 'n', '0', 'false'):
             return False
 
-    raise ValueError('Could not decode as a boolean value: %r' % (sval,))
+    raise ValueError(f'Could not decode as a boolean value: {sval!r}')
