@@ -27,7 +27,7 @@ sys.path.insert(0, str(DIR.parent))
 
 # We have to import our local modules after the sys.path tweak.  We can't use
 # relative imports because this is an executable program, not a module.
-# pylint: disable=wrong-import-position
+# pylint: disable=wrong-import-position,import-error
 import rh.utils
 
 
@@ -71,6 +71,12 @@ class GitClangFormatExit(unittest.TestCase):
     def test_diff_exit_1_no_output(self):
         """Test exit 1 w/no output."""
         with git_clang_format('exit 1') as script:
+            result = run_clang_format(script, ['--working-tree'])
+            self.assertEqual(result.stdout, '')
+
+    def test_diff_exit_1_output(self):
+        """Test exit 1 with output."""
+        with git_clang_format('echo bad; exit 1') as script:
             with self.assertRaises(rh.utils.CalledProcessError) as e:
                 run_clang_format(script, ['--working-tree'])
             self.assertIn('clang-format failed', e.exception.stderr)
@@ -88,6 +94,14 @@ class GitClangFormatExit(unittest.TestCase):
             with self.assertRaises(rh.utils.CalledProcessError) as e:
                 run_clang_format(script, ['--working-tree'])
             self.assertIn('clang-format failed', e.exception.stderr)
+
+    def test_fix_exit_1_output(self):
+        """Test fix with incorrect patch syntax."""
+        with git_clang_format('echo bad patch; exit 1') as script:
+            with self.assertRaises(rh.utils.CalledProcessError) as e:
+                run_clang_format(script, ['--working-tree', '--fix'])
+            self.assertIn('Error: Unable to automatically fix things',
+                          e.exception.stderr)
 
 
 if __name__ == '__main__':
