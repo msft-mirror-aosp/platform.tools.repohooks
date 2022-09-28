@@ -51,11 +51,6 @@ class HookResult(object):
     def __bool__(self):
         return bool(self.error)
 
-    # pylint: disable=nonzero-method
-    def __nonzero__(self):
-        """Python 2/3 glue."""
-        return self.__bool__()
-
     def is_warning(self):
         return False
 
