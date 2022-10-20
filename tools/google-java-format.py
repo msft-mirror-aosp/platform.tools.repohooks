@@ -18,7 +18,7 @@
 import argparse
 import os
 import sys
-from distutils.spawn import find_executable
+from shutil import which
 
 _path = os.path.realpath(__file__ + '/../..')
 if sys.path[0] != _path:
@@ -64,7 +64,7 @@ def main(argv):
     # the parent dir up front and inject it into $PATH when launching it.
     # TODO: Pass the path in directly once this issue is resolved:
     # https://github.com/google/google-java-format/issues/108
-    format_path = find_executable(opts.google_java_format)
+    format_path = which(opts.google_java_format)
     if not format_path:
         print(
             f'Unable to find google-java-format at: {opts.google_java_format}',
