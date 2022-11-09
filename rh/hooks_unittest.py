@@ -370,6 +370,8 @@ class BuiltinHooksTests(unittest.TestCase):
         ret = rh.hooks.check_bpfmt(
             self.project, 'commit', 'desc', diff, options=self.options)
         self.assertIsNotNone(ret)
+        for result in ret:
+            self.assertIsNotNone(result.fixup_func)
 
     def test_checkpatch(self, mock_check, _mock_run):
         """Verify the checkpatch builtin hook."""
