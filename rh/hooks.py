@@ -1030,13 +1030,17 @@ def check_aidl_format(project, commit, _desc, diff, options=None):
     if not filtered:
         return None
     aidl_format = options.tool_path('aidl-format')
-    cmd = [aidl_format, '-d'] + options.args((), filtered)
+    clang_format = options.tool_path('clang-format')
+    diff_cmd = [aidl_format, '-d', '--clang-format-path', clang_format] + \
+            options.args((), filtered)
     ret = []
     for d in filtered:
         data = rh.git.get_file_content(commit, d.file)
-        result = _run(cmd, input=data)
+        result = _run(diff_cmd, input=data)
         if result.stdout:
-            fixup_func = _fixup_func_caller([aidl_format, '-w', d.file])
+            fix_cmd = [aidl_format, '-w', '--clang-format-path', clang_format,
+                       d.file]
+            fixup_func = _fixup_func_caller(fix_cmd)
             ret.append(rh.results.HookResult(
                 'aidl-format', project, commit, error=result.stdout,
                 files=(d.file,), fixup_func=fixup_func))
