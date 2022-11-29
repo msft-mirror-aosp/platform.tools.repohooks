@@ -31,7 +31,7 @@ import re
 import string
 import subprocess
 import sys
-from distutils.spawn import find_executable
+import shutil
 
 def find_executable_portable(executable):
   if platform.system() == 'Windows':
@@ -45,7 +45,7 @@ def find_executable_portable(executable):
             return file
     return ""
   else:
-    return find_executable(executable)
+    return shutil.which(executable)
 
 binary = find_executable_portable('google-java-format') or '/usr/bin/google-java-format'
 

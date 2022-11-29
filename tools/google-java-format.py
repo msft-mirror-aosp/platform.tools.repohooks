@@ -19,7 +19,7 @@ import argparse
 import os
 import platform
 import sys
-from distutils.spawn import find_executable
+import shutil
 
 _path = os.path.realpath(__file__ + '/../..')
 if sys.path[0] != _path:
@@ -73,7 +73,7 @@ def find_executable_portable(executable):
             return file
     return ""
   else:
-    return find_executable(executable)
+    return shutil.which(executable)
 
 def main(argv):
     """The main entry."""
