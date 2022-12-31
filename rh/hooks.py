@@ -129,6 +129,11 @@ class Placeholders(object):
         return [x.file for x in self.diff if x.status != 'D']
 
     @property
+    def var_REPO_PATH(self):
+        """The path to the project relative to the root"""
+        return os.environ.get('REPO_PATH', '')
+
+    @property
     def var_REPO_ROOT(self):
         """The root of the repo (sub-manifest) checkout."""
         return rh.git.find_repo_root()
