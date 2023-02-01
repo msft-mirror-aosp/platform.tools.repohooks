@@ -35,7 +35,7 @@ def get_upstream_remote():
     branch = result.stdout.strip()
 
     # Then get the remote associated with this branch.
-    cmd = ['git', 'config', f'branch.{branch}.remote']
+    cmd = ['git', 'config', 'branch.%s.remote' % branch]
     result = rh.utils.run(cmd, capture_output=True)
     return result.stdout.strip()
 
@@ -52,14 +52,14 @@ def get_upstream_branch():
     if not current_branch:
         raise ValueError('Need to be on a tracking branch')
 
-    cfg_option = 'branch.' + current_branch + '.'
-    cmd = ['git', 'config', cfg_option + 'merge']
+    cfg_option = 'branch.' + current_branch + '.%s'
+    cmd = ['git', 'config', cfg_option % 'merge']
     result = rh.utils.run(cmd, capture_output=True)
     full_upstream = result.stdout.strip()
     # If remote is not fully qualified, add an implicit namespace.
     if '/' not in full_upstream:
-        full_upstream = f'refs/heads/{full_upstream}'
-    cmd = ['git', 'config', cfg_option + 'remote']
+        full_upstream = 'refs/heads/%s' % full_upstream
+    cmd = ['git', 'config', cfg_option % 'remote']
     result = rh.utils.run(cmd, capture_output=True)
     remote = result.stdout.strip()
     if not remote or not full_upstream:
@@ -77,7 +77,7 @@ def get_commit_for_ref(ref):
 
 def get_remote_revision(ref, remote):
     """Returns the remote revision for this ref."""
-    prefix = f'refs/remotes/{remote}/'
+    prefix = 'refs/remotes/%s/' % remote
     if ref.startswith(prefix):
         return ref[len(prefix):]
     return ref
@@ -99,7 +99,7 @@ def get_file_content(commit, path):
     a full file, you should check that first.  One way to detect is that the
     content will not have any newlines.
     """
-    cmd = ['git', 'show', f'{commit}:{path}']
+    cmd = ['git', 'show', '%s:%s' % (commit, path)]
     return rh.utils.run(cmd, capture_output=True).stdout
 
 
@@ -147,7 +147,7 @@ def raw_diff(path, target):
     for line in diff_lines:
         match = DIFF_RE.match(line)
         if not match:
-            raise ValueError(f'Failed to parse diff output: {line}')
+            raise ValueError('Failed to parse diff output: %s' % line)
         rawdiff = RawDiffEntry(**match.groupdict())
         rawdiff.src_mode = int(rawdiff.src_mode)
         rawdiff.dst_mode = int(rawdiff.dst_mode)
@@ -164,12 +164,12 @@ def get_affected_files(commit):
     Returns:
       A list of modified/added (and perhaps deleted) files
     """
-    return raw_diff(os.getcwd(), f'{commit}^-')
+    return raw_diff(os.getcwd(), '%s^-' % commit)
 
 
 def get_commits(ignore_merged_commits=False):
     """Returns a list of commits for this review."""
-    cmd = ['git', 'rev-list', f'{get_upstream_branch()}..']
+    cmd = ['git', 'rev-list', '%s..' % get_upstream_branch()]
     if ignore_merged_commits:
         cmd.append('--first-parent')
     return rh.utils.run(cmd, capture_output=True).stdout.split()
@@ -181,41 +181,17 @@ def get_commit_desc(commit):
     return rh.utils.run(cmd, capture_output=True).stdout
 
 
-def find_repo_root(path=None, outer=False):
-    """Locate the top level of this repo checkout starting at |path|.
-
-    Args:
-      outer: Whether to find the outermost manifest, or the sub-manifest.
-    """
+def find_repo_root(path=None):
+    """Locate the top level of this repo checkout starting at |path|."""
     if path is None:
         path = os.getcwd()
     orig_path = path
 
     path = os.path.abspath(path)
-
-    # If we are working on a superproject instead of a repo client, use the
-    # result from git directly.  For regular repo client, this would return
-    # empty string.
-    cmd = ['git', 'rev-parse', '--show-superproject-working-tree']
-    git_worktree_path = rh.utils.run(cmd, cwd=path, capture_output=True).stdout.strip()
-    if git_worktree_path:
-        return git_worktree_path
-
     while not os.path.exists(os.path.join(path, '.repo')):
         path = os.path.dirname(path)
         if path == '/':
-            raise ValueError(f'Could not locate .repo in {orig_path}')
-
-    root = path
-    if not outer and os.path.isdir(os.path.join(root, '.repo', 'submanifests')):
-        # If there are submanifests, walk backward from path until we find the
-        # corresponding submanifest root.
-        abs_orig_path = os.path.abspath(orig_path)
-        parts = os.path.relpath(abs_orig_path, root).split(os.path.sep)
-        while parts and not os.path.isdir(
-            os.path.join(root, '.repo', 'submanifests', *parts, 'manifests')):
-            parts.pop()
-        path = os.path.join(root, *parts)
+            raise ValueError('Could not locate .repo in %s' % orig_path)
 
     return path
 

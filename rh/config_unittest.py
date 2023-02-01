@@ -57,7 +57,7 @@ class FileTestCase(unittest.TestCase):
           Path to the file where the configuration was written.
         """
         path = os.path.join(self.tempdir, filename)
-        with open(path, 'w', encoding='utf-8') as fp:
+        with open(path, 'w') as fp:
             fp.write(data)
         return path
 

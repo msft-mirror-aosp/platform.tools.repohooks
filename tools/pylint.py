@@ -24,7 +24,7 @@ import subprocess
 
 
 assert (sys.version_info.major, sys.version_info.minor) >= (3, 6), (
-    f'Python 3.6 or newer is required; found {sys.version}')
+    'Python 3.6 or newer is required; found %s' % (sys.version,))
 
 
 DEFAULT_PYLINTRC_PATH = os.path.join(
@@ -37,8 +37,8 @@ def is_pylint3(pylint):
     result = subprocess.run([pylint, '--version'], stdout=subprocess.PIPE,
                             check=True)
     if b'Python 3' not in result.stdout:
-        print(f'{__file__}: unable to locate a Python 3 version of pylint; '
-              'Python 3 support cannot be guaranteed', file=sys.stderr)
+        print('%s: unable to locate a Python 3 version of pylint; Python 3 '
+              'support cannot be guaranteed' % (__file__,), file=sys.stderr)
         return False
 
     return True
@@ -55,8 +55,8 @@ def find_pylint3():
 
     # If there's no pylint, give up.
     if not shutil.which('pylint'):
-        print(f'{__file__}: unable to locate pylint; please install:\n'
-              'sudo apt-get install pylint', file=sys.stderr)
+        print('%s: unable to locate pylint; please install:\n'
+              'sudo apt-get install pylint' % (__file__,), file=sys.stderr)
         sys.exit(1)
 
     return 'pylint'
@@ -103,7 +103,7 @@ def main(argv):
             pylintrc = DEFAULT_PYLINTRC_PATH
             # If we pass a non-existent rcfile to pylint, it'll happily ignore
             # it.
-            assert os.path.exists(pylintrc), f'Could not find {pylintrc}'
+            assert os.path.exists(pylintrc), 'Could not find %s' % pylintrc
         cmd += ['--rcfile', pylintrc]
 
     cmd += unknown + opts.files
@@ -116,10 +116,10 @@ def main(argv):
         return 0
     except OSError as e:
         if e.errno == errno.ENOENT:
-            print(f'{__file__}: unable to run `{cmd[0]}`: {e}',
+            print('%s: unable to run `%s`: %s' % (__file__, cmd[0], e),
                   file=sys.stderr)
-            print(f'{__file__}: Try installing pylint: sudo apt-get install '
-                  f'{os.path.basename(cmd[0])}', file=sys.stderr)
+            print('%s: Try installing pylint: sudo apt-get install %s' %
+                  (__file__, os.path.basename(cmd[0])), file=sys.stderr)
             return 1
 
         raise

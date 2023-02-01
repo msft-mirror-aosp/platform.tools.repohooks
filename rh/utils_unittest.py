@@ -17,7 +17,6 @@
 
 import datetime
 import os
-from pathlib import Path
 import sys
 import unittest
 
@@ -153,13 +152,13 @@ class RunCommandTests(unittest.TestCase):
     def test_stdout_utf8(self):
         """Verify reading UTF-8 data works."""
         ret = rh.utils.run(['printf', r'\xc3\x9f'], redirect_stdout=True)
-        self.assertEqual('ß', ret.stdout)
+        self.assertEqual(u'ß', ret.stdout)
         self.assertIsNone(ret.stderr)
 
     def test_stdin_utf8(self):
         """Verify writing UTF-8 data works."""
-        ret = rh.utils.run(['cat'], redirect_stdout=True, input='ß')
-        self.assertEqual('ß', ret.stdout)
+        ret = rh.utils.run(['cat'], redirect_stdout=True, input=u'ß')
+        self.assertEqual(u'ß', ret.stdout)
         self.assertIsNone(ret.stderr)
 
     def test_check_false(self):
@@ -215,13 +214,6 @@ class RunCommandTests(unittest.TestCase):
         err = e.exception
         self.assertNotEqual(0, err.returncode)
         self.assertIn('a/b/c/d', str(err))
-
-    def test_pathlib(self):
-        """Verify pathlib arguments work."""
-        result = rh.utils.run(['true', Path('/')])
-        # Verify stringify behavior.
-        str(result)
-        self.assertEqual(result.cmdstr, 'true /')
 
 
 if __name__ == '__main__':

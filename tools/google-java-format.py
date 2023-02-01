@@ -18,7 +18,7 @@
 import argparse
 import os
 import sys
-from shutil import which
+from distutils.spawn import find_executable
 
 _path = os.path.realpath(__file__ + '/../..')
 if sys.path[0] != _path:
@@ -28,8 +28,8 @@ del _path
 # We have to import our local modules after the sys.path tweak.  We can't use
 # relative imports because this is an executable program, not a module.
 # pylint: disable=wrong-import-position
-import rh.shell # pylint: disable=import-error
-import rh.utils # pylint: disable=import-error
+import rh.shell
+import rh.utils
 
 
 def get_parser():
@@ -52,8 +52,6 @@ def get_parser():
     parser.add_argument('files', nargs='*',
                         help='If specified, only consider differences in '
                              'these files.')
-    parser.add_argument('--verbose', action='store_true',
-                        help='Explain what is being done.')
     return parser
 
 
@@ -62,59 +60,42 @@ def main(argv):
     parser = get_parser()
     opts = parser.parse_args(argv)
 
-    format_path = which(opts.google_java_format)
+    # google-java-format-diff.py looks for google-java-format in $PATH, so find
+    # the parent dir up front and inject it into $PATH when launching it.
+    # TODO: Pass the path in directly once this issue is resolved:
+    # https://github.com/google/google-java-format/issues/108
+    format_path = find_executable(opts.google_java_format)
     if not format_path:
-        print(
-            f'Unable to find google-java-format at: {opts.google_java_format}',
-            file=sys.stderr
-        )
+        print('Unable to find google-java-format at %s' %
+              opts.google_java_format)
         return 1
+
+    extra_env = {
+        'PATH': '%s%s%s' % (os.path.dirname(format_path),
+                            os.pathsep,
+                            os.environ['PATH'])
+    }
 
     # TODO: Delegate to the tool once this issue is resolved:
     # https://github.com/google/google-java-format/issues/107
-    diff_cmd = ['git', 'diff', '--no-ext-diff', '-U0', f'{opts.commit}^!']
+    diff_cmd = ['git', 'diff', '--no-ext-diff', '-U0', '%s^!' % opts.commit]
     diff_cmd.extend(['--'] + opts.files)
     diff = rh.utils.run(diff_cmd, capture_output=True).stdout
 
-    format_cmd = [
-    	opts.google_java_format_diff,
-    	'-p1',
-    	'--aosp',
-    	'-b',
-    	format_path,
-    ]
+    cmd = [opts.google_java_format_diff, '-p1', '--aosp']
     if opts.fix:
-        format_cmd.extend(['-i'])
+        cmd.extend(['-i'])
     if not opts.sort_imports:
-        format_cmd.extend(['--skip-sorting-imports'])
+        cmd.extend(['--skip-sorting-imports'])
 
-    format_cmd_result = rh.utils.run(
-    	format_cmd, input=diff, capture_output=True)
-
-    if format_cmd_result.returncode != 0:
-        print("Failed due to non-zero exit code.")
-        if opts.verbose:
-            # print out the full command that was called, including pipes
-            print("Called:")
-            print(f"    {' '.join(diff_cmd)} |")
-            print(f"    {' '.join(format_cmd)}")
-        for line in format_cmd_result.stdout.splitlines():
-            print(f"[captured stdout]   {line}")
-        for line in format_cmd_result.stderr.splitlines():
-            print(f"[captured stderr]   {line}")
-        return format_cmd_result.returncode
-    if format_cmd_result.stdout:
+    stdout = rh.utils.run(cmd, input=diff, capture_output=True,
+                          extra_env=extra_env).stdout
+    if stdout:
         print('One or more files in your commit have Java formatting errors.')
-        print(f'You can run: {sys.argv[0]} --fix {rh.shell.cmd_to_str(argv)}')
+        print('You can run `%s --fix %s` to fix this' %
+              (sys.argv[0], rh.shell.cmd_to_str(argv)))
         return 1
-    if format_cmd_result.stderr:
-        # We need to use stderr to catch errors in google-java-format since we
-        # cannot listen for a non-zero error code until
-        # https://github.com/google/google-java-format/pull/848 is merged.
-        print("Errors have been captured in stderr.")
-        for line in format_cmd_result.stderr.splitlines():
-            print(f"[captured stderr]   {line}")
-        return 1
+
     return 0
 
 
