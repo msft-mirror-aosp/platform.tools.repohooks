@@ -170,6 +170,9 @@ some dog = tool --no-cat-in-commit-message ${PREUPLOAD_COMMIT_MESSAGE}
 This section allows for turning on common/builtin hooks.  There are a bunch of
 canned hooks already included geared towards AOSP style guidelines.
 
+* `aidl_format`: Run AIDL files (.aidl) through `aidl-format`.
+* `android_test_mapping_format`: Validate TEST_MAPPING files in Android source
+  code. Refer to go/test-mapping for more details.
 * `bpfmt`: Run Blueprint files (.bp) through `bpfmt`.
 * `checkpatch`: Run commits through the Linux kernel's `checkpatch.pl` script.
 * `clang_format`: Run git-clang-format against the commit. The default style is
@@ -181,6 +184,9 @@ canned hooks already included geared towards AOSP style guidelines.
 * `commit_msg_relnote_field_format`: Check for possible misspellings of the
   `Relnote:` field and that multiline release notes are properly formatted with
   quotes.
+* `commit_msg_relnote_for_current_txt`: Check that CLs with changes to
+  current.txt or public_plus_experimental_current.txt also contain a
+  `Relnote:` field in the commit message.
 * `commit_msg_test_field`: Require a `Test:` line.
 * `cpplint`: Run through the cpplint tool (for C++ code).
 * `gofmt`: Run Go code through `gofmt`.
@@ -190,9 +196,8 @@ canned hooks already included geared towards AOSP style guidelines.
 * `pylint`: Alias of `pylint2`.  Will change to `pylint3` by end of 2019.
 * `pylint2`: Run Python code through `pylint` using Python 2.
 * `pylint3`: Run Python code through `pylint` using Python 3.
+* `rustfmt`: Run Rust code through `rustfmt`.
 * `xmllint`: Run XML code through `xmllint`.
-* `android_test_mapping_format`: Validate TEST_MAPPING files in Android source
-  code. Refer to go/test-mapping for more details.
 
 Note: Builtin hooks tend to match specific filenames (e.g. `.json`).  If no
 files match in a specific commit, then the hook will be skipped for that commit.
@@ -223,6 +228,34 @@ See [Placeholders](#Placeholders) for variables you can expand automatically.
 cpplint = --filter=-x ${PREUPLOAD_FILES}
 ```
 
+## [Builtin Hooks Exclude Paths]
+
+*** note
+This section can only be added to the repo project-wide settings
+[GLOBAL-PREUPLOAD.cfg].
+***
+
+Used to explicitly exclude some projects when processing a hook. With this
+section, it is possible to define a hook that should apply to the majority of
+projects except a few.
+
+An entry must completely match the project's `REPO_PATH`. The paths can use the
+[shell-style wildcards](https://docs.python.org/library/fnmatch.html) and
+quotes. For advanced cases, it is possible to use a [regular
+expression](https://docs.python.org/howto/regex.html) by using the `^` prefix.
+
+```
+[Builtin Hooks Exclude Paths]
+# Run cpplint on all projects except ones under external/ and vendor/.
+# The "external" and "vendor" projects, if they exist, will still run cpplint.
+cpplint = external/* vendor/*
+
+# Run rustfmt on all projects except ones under external/.  All projects under
+# hardware/ will be excluded except for ones starting with hardware/google (due to
+# the negative regex match).
+rustfmt = external/ ^hardware/(!?google)
+```
+
 ## [Tool Paths]
 
 Some builtin hooks need to call external executables to work correctly.  By
@@ -231,6 +264,9 @@ executables can be overridden through `[Tool Paths]`.  This is helpful to
 provide consistent behavior for developers across different OS and Linux
 distros/versions.  The following tools are recognized:
 
+* `aidl-format`: used for the `aidl_format` builtin hook.
+* `android-test-mapping-format`: used for the `android_test_mapping_format`
+  builtin hook.
 * `bpfmt`: used for the `bpfmt` builtin hook.
 * `clang-format`: used for the `clang_format` builtin hook.
 * `cpplint`: used for the `cpplint` builtin hook.
@@ -239,8 +275,7 @@ distros/versions.  The following tools are recognized:
 * `google-java-format`: used for the `google_java_format` builtin hook.
 * `google-java-format-diff`: used for the `google_java_format` builtin hook.
 * `pylint`: used for the `pylint` builtin hook.
-* `android-test-mapping-format`: used for the `android_test_mapping_format`
-  builtin hook.
+* `rustfmt`: used for the `rustfmt` builtin hook.
 
 See [Placeholders](#Placeholders) for variables you can expand automatically.
 
