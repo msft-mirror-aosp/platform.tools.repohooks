@@ -113,6 +113,7 @@ force your own quote handling.
 Some variables are available to make it easier to handle OS differences.  These
 are automatically expanded for you:
 
+* `${REPO_PATH}`: The path to the project relative to the root.
 * `${REPO_ROOT}`: The absolute path of the root of the repo checkout.  If the
   project is in a submanifest, this points to the root of the submanifest.
 * `${REPO_OUTER_ROOT}`: The absolute path of the root of the repo checkout.

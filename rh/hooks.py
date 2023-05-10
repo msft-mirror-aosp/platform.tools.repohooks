@@ -129,6 +129,11 @@ class Placeholders(object):
         return [x.file for x in self.diff if x.status != 'D']
 
     @property
+    def var_REPO_PATH(self):
+        """The path to the project relative to the root"""
+        return os.environ.get('REPO_PATH', '')
+
+    @property
     def var_REPO_ROOT(self):
         """The root of the repo (sub-manifest) checkout."""
         return rh.git.find_repo_root()
@@ -434,12 +439,13 @@ def check_ktfmt(project, commit, _desc, diff, options=None):
     result = _run(cmd)
     if result.stdout:
         paths = [os.path.join(project.dir, x.file) for x in filtered]
+        fixup_cmd = [ktfmt] + args + paths
         error = (
-            f'\nKotlin files need formatting.\n'
-            'To reformat the kotlin files in this commit:\n'
-            f'{ktfmt} {" ".join(paths)}'
+            '\nKotlin files need formatting.\n' +
+            'To reformat the kotlin files in this commit:\n' +
+            rh.shell.cmd_to_str(fixup_cmd)
         )
-        fixup_func = _fixup_func_caller([ktfmt] + paths)
+        fixup_func = _fixup_func_caller(fixup_cmd)
         return [rh.results.HookResult('ktfmt', project, commit, error=error,
                                       files=paths, fixup_func=fixup_func)]
     return None
@@ -1030,13 +1036,17 @@ def check_aidl_format(project, commit, _desc, diff, options=None):
     if not filtered:
         return None
     aidl_format = options.tool_path('aidl-format')
-    cmd = [aidl_format, '-d'] + options.args((), filtered)
+    clang_format = options.tool_path('clang-format')
+    diff_cmd = [aidl_format, '-d', '--clang-format-path', clang_format] + \
+            options.args((), filtered)
     ret = []
     for d in filtered:
         data = rh.git.get_file_content(commit, d.file)
-        result = _run(cmd, input=data)
+        result = _run(diff_cmd, input=data)
         if result.stdout:
-            fixup_func = _fixup_func_caller([aidl_format, '-w', d.file])
+            fix_cmd = [aidl_format, '-w', '--clang-format-path', clang_format,
+                       d.file]
+            fixup_func = _fixup_func_caller(fix_cmd)
             ret.append(rh.results.HookResult(
                 'aidl-format', project, commit, error=result.stdout,
                 files=(d.file,), fixup_func=fixup_func))
