@@ -129,6 +129,11 @@ class Placeholders(object):
         return [x.file for x in self.diff if x.status != 'D']
 
     @property
+    def var_REPO_PATH(self):
+        """The path to the project relative to the root"""
+        return os.environ.get('REPO_PATH', '')
+
+    @property
     def var_REPO_ROOT(self):
         """The root of the repo (sub-manifest) checkout."""
         return rh.git.find_repo_root()
@@ -434,12 +439,13 @@ def check_ktfmt(project, commit, _desc, diff, options=None):
     result = _run(cmd)
     if result.stdout:
         paths = [os.path.join(project.dir, x.file) for x in filtered]
+        fixup_cmd = [ktfmt] + args + paths
         error = (
-            f'\nKotlin files need formatting.\n'
-            'To reformat the kotlin files in this commit:\n'
-            f'{ktfmt} {" ".join(paths)}'
+            '\nKotlin files need formatting.\n' +
+            'To reformat the kotlin files in this commit:\n' +
+            rh.shell.cmd_to_str(fixup_cmd)
         )
-        fixup_func = _fixup_func_caller([ktfmt] + paths)
+        fixup_func = _fixup_func_caller(fixup_cmd)
         return [rh.results.HookResult('ktfmt', project, commit, error=error,
                                       files=paths, fixup_func=fixup_func)]
     return None
