@@ -248,8 +248,7 @@ class _Popen(subprocess.Popen):
 # pylint: disable=redefined-builtin
 def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
         shell=False, env=None, extra_env=None, combine_stdout_stderr=False,
-        check=True, int_timeout=1, kill_timeout=1, capture_output=False,
-        close_fds=True):
+        check=True, int_timeout=1, kill_timeout=1, capture_output=False):
     """Runs a command.
 
     Args:
@@ -275,7 +274,6 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
       kill_timeout: If we're interrupted, how long (in seconds) should we give
           the invoked process to shutdown from a SIGTERM before we SIGKILL it.
       capture_output: Set |redirect_stdout| and |redirect_stderr| to True.
-      close_fds: Whether to close all fds before running |cmd|.
 
     Returns:
       A CompletedProcess object.
@@ -364,7 +362,7 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
     try:
         proc = _Popen(cmd, cwd=cwd, stdin=stdin, stdout=popen_stdout,
                       stderr=popen_stderr, shell=False, env=env,
-                      close_fds=close_fds)
+                      close_fds=True)
 
         old_sigint = signal.getsignal(signal.SIGINT)
         handler = functools.partial(_kill_child_process, proc, int_timeout,
