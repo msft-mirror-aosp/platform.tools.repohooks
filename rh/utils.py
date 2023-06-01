@@ -81,15 +81,9 @@ class CalledProcessError(subprocess.CalledProcessError):
       returncode: The exit code of the process.
       cmd: The command that triggered this exception.
       msg: Short explanation of the error.
-      exception: The underlying Exception if available.
     """
 
-    def __init__(self, returncode, cmd, stdout=None, stderr=None, msg=None,
-                 exception=None):
-        if exception is not None and not isinstance(exception, Exception):
-            raise TypeError(
-                f'exception must be an exception instance; got {exception!r}')
-
+    def __init__(self, returncode, cmd, stdout=None, stderr=None, msg=None):
         super().__init__(returncode, cmd, stdout)
         # The parent class will set |output|, so delete it.
         del self.output
@@ -99,7 +93,6 @@ class CalledProcessError(subprocess.CalledProcessError):
         # TODO(vapier): When we're Python 3-only, move stderr to the init above.
         self.stderr = stderr
         self.msg = msg
-        self.exception = exception
 
     @property
     def cmdstr(self):
@@ -420,7 +413,7 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
             result = CompletedProcess(args=cmd, stderr=estr, returncode=255)
         else:
             raise CalledProcessError(
-                result.returncode, result.cmd, msg=estr, exception=e,
+                result.returncode, result.cmd, msg=estr,
                 stdout=ensure_text(result.stdout),
                 stderr=ensure_text(result.stderr)) from e
     finally:
