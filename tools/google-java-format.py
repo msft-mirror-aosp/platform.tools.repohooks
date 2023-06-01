@@ -17,8 +17,8 @@
 
 import argparse
 import os
+import shutil
 import sys
-from shutil import which
 
 _path = os.path.realpath(__file__ + '/../..')
 if sys.path[0] != _path:
@@ -60,7 +60,7 @@ def main(argv):
     parser = get_parser()
     opts = parser.parse_args(argv)
 
-    format_path = which(opts.google_java_format)
+    format_path = shutil.which(opts.google_java_format)
     if not format_path:
         print(
             f'Unable to find google-java-format at: {opts.google_java_format}',
