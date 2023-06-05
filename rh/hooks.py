@@ -457,7 +457,7 @@ def check_google_java_format(project, commit, _desc, _diff, options=None):
 
 def check_commit_msg_buganizer_field(project, commit, desc, _diff, options=None):
    """Check the commit message for a 'Bug:' or 'Fixes:' line."""
-   regex = r'^(?i)(bug|fixes):'
+   regex = r'(?i)^(bug|fixes):'
    check_re = re.compile(regex)
 
    if options.args():
