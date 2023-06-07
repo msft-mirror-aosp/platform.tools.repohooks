@@ -81,15 +81,9 @@ class CalledProcessError(subprocess.CalledProcessError):
       returncode: The exit code of the process.
       cmd: The command that triggered this exception.
       msg: Short explanation of the error.
-      exception: The underlying Exception if available.
     """
 
-    def __init__(self, returncode, cmd, stdout=None, stderr=None, msg=None,
-                 exception=None):
-        if exception is not None and not isinstance(exception, Exception):
-            raise TypeError(
-                f'exception must be an exception instance; got {exception!r}')
-
+    def __init__(self, returncode, cmd, stdout=None, stderr=None, msg=None):
         super().__init__(returncode, cmd, stdout)
         # The parent class will set |output|, so delete it.
         del self.output
@@ -99,7 +93,6 @@ class CalledProcessError(subprocess.CalledProcessError):
         # TODO(vapier): When we're Python 3-only, move stderr to the init above.
         self.stderr = stderr
         self.msg = msg
-        self.exception = exception
 
     @property
     def cmdstr(self):
@@ -248,8 +241,7 @@ class _Popen(subprocess.Popen):
 # pylint: disable=redefined-builtin
 def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
         shell=False, env=None, extra_env=None, combine_stdout_stderr=False,
-        check=True, int_timeout=1, kill_timeout=1, capture_output=False,
-        close_fds=True):
+        check=True, int_timeout=1, kill_timeout=1, capture_output=False):
     """Runs a command.
 
     Args:
@@ -275,7 +267,6 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
       kill_timeout: If we're interrupted, how long (in seconds) should we give
           the invoked process to shutdown from a SIGTERM before we SIGKILL it.
       capture_output: Set |redirect_stdout| and |redirect_stderr| to True.
-      close_fds: Whether to close all fds before running |cmd|.
 
     Returns:
       A CompletedProcess object.
@@ -364,7 +355,7 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
     try:
         proc = _Popen(cmd, cwd=cwd, stdin=stdin, stdout=popen_stdout,
                       stderr=popen_stderr, shell=False, env=env,
-                      close_fds=close_fds)
+                      close_fds=True)
 
         old_sigint = signal.getsignal(signal.SIGINT)
         handler = functools.partial(_kill_child_process, proc, int_timeout,
@@ -420,7 +411,7 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
             result = CompletedProcess(args=cmd, stderr=estr, returncode=255)
         else:
             raise CalledProcessError(
-                result.returncode, result.cmd, msg=estr, exception=e,
+                result.returncode, result.cmd, msg=estr,
                 stdout=ensure_text(result.stdout),
                 stderr=ensure_text(result.stderr)) from e
     finally:
