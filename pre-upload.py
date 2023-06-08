@@ -23,6 +23,7 @@ import argparse
 import datetime
 import os
 import sys
+from typing import List, Optional
 
 
 # Assert some minimum Python versions as we don't test or support any others.
@@ -269,7 +270,7 @@ def _run_project_hooks_in_cwd(project_name, proj_dir, output, from_git=False, co
           uploaded.
 
     Returns:
-      False if any errors were found, else True.
+      True if everything passed, else False.
     """
     try:
         config = _get_project_config(from_git)
@@ -359,7 +360,7 @@ def _run_project_hooks(project_name, proj_dir=None, from_git=False, commit_list=
           uploaded.
 
     Returns:
-      False if any errors were found, else True.
+      True if everything passed, else False.
     """
     output = Output(project_name)
 
@@ -391,6 +392,42 @@ def _run_project_hooks(project_name, proj_dir=None, from_git=False, commit_list=
         os.chdir(pwd)
 
 
+def _run_projects_hooks(
+    project_list: List[str],
+    worktree_list: List[Optional[str]],
+    from_git: bool = False,
+    commit_list: Optional[List[str]] = None,
+) -> bool:
+    """Run all the hooks
+
+    Args:
+      project_list: List of project names.
+      worktree_list: List of project checkouts.
+      from_git: If true, we are called from git directly and repo should not be
+          used.
+      commit_list: A list of commits to run hooks against.  If None or empty
+          list then we'll automatically get the list of commits that would be
+          uploaded.
+
+    Returns:
+      True if everything passed, else False.
+    """
+    ret = True
+    for project, worktree in zip(project_list, worktree_list):
+        if not _run_project_hooks(
+            project,
+            proj_dir=worktree,
+            from_git=from_git,
+            commit_list=commit_list,
+        ):
+            ret = False
+            # If a repo had failures, add a blank line to help break up the
+            # output.  If there were no failures, then the output should be
+            # very minimal, so we don't add it then.
+            print('', file=sys.stderr)
+    return ret
+
+
 def main(project_list, worktree_list=None, **_kwargs):
     """Main function invoked directly by repo.
 
@@ -407,18 +444,9 @@ def main(project_list, worktree_list=None, **_kwargs):
           the directories automatically.
       kwargs: Leave this here for forward-compatibility.
     """
-    found_error = False
     if not worktree_list:
         worktree_list = [None] * len(project_list)
-    for project, worktree in zip(project_list, worktree_list):
-        if not _run_project_hooks(project, proj_dir=worktree):
-            found_error = True
-            # If a repo had failures, add a blank line to help break up the
-            # output.  If there were no failures, then the output should be
-            # very minimal, so we don't add it then.
-            print('', file=sys.stderr)
-
-    if found_error:
+    if not _run_projects_hooks(project_list, worktree_list):
         color = rh.terminal.Color()
         print(color.color(color.RED, 'FATAL') +
               ': Preupload failed due to above error(s).\n'
@@ -499,8 +527,8 @@ def direct_main(argv):
         if not opts.project:
             parser.error(f"Couldn't identify the project of {opts.dir}")
 
-    if _run_project_hooks(opts.project, proj_dir=opts.dir, from_git=opts.git,
-                          commit_list=opts.commits):
+    if _run_projects_hooks([opts.project], [opts.dir], from_git=opts.git,
+                           commit_list=opts.commits):
         return 0
     return 1
 
