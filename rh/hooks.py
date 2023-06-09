@@ -943,11 +943,9 @@ def check_rustfmt(project, commit, _desc, diff, options=None):
         # TODO(b/164111102): rustfmt stable does not support --check on stdin.
         # If no error is reported, compare stdin with stdout.
         if data != result.stdout:
-            msg = ('To fix, please run: ' +
-                   rh.shell.cmd_to_str(cmd + [d.file]))
             ret.append(rh.results.HookResult(
-                'rustfmt', project, commit, error=msg,
-                files=(d.file,)))
+                'rustfmt', project, commit, error='Files not formatted',
+                files=(d.file,), fixup_cmd=cmd))
     return ret
 
 
