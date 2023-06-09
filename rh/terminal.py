@@ -19,6 +19,7 @@ This module handles terminal interaction including ANSI color codes.
 
 import os
 import sys
+from typing import List, Optional
 
 _path = os.path.realpath(__file__ + '/../..')
 if sys.path[0] != _path:
@@ -127,6 +128,34 @@ def print_status_line(line, print_newline=False):
     sys.stderr.flush()
 
 
+def str_prompt(
+    prompt: str,
+    choices: List[str],
+    lower: bool = True,
+) -> Optional[str]:
+    """Helper function for processing user input.
+
+    Args:
+        prompt: The question to present to the user.
+        lower: Whether to lowercase the response.
+
+    Returns:
+        The string the user entered, or None if EOF (e.g. Ctrl+D).
+    """
+    prompt = f'{prompt} ({"/".join(choices)})? '
+    try:
+        result = input(prompt)
+        return result.lower() if lower else result
+    except EOFError:
+        # If the user hits Ctrl+D, or stdin is disabled, use the default.
+        print()
+        return None
+    except KeyboardInterrupt:
+        # If the user hits Ctrl+C, just exit the process.
+        print()
+        raise
+
+
 def boolean_prompt(prompt='Do you want to continue?', default=True,
                    true_value='yes', false_value='no', prolog=None):
     """Helper function for processing boolean choice prompts.
@@ -152,23 +181,12 @@ def boolean_prompt(prompt='Do you want to continue?', default=True,
     else:
         false_text = false_text[0].upper() + false_text[1:]
 
-    prompt = f'\n{prompt} ({true_text}/{false_text})? '
-
     if prolog:
         prompt = f'\n{prolog}\n{prompt}'
+    prompt = '\n' + prompt
 
     while True:
-        try:
-            response = input(prompt).lower()  # pylint: disable=bad-builtin
-        except EOFError:
-            # If the user hits CTRL+D, or stdin is disabled, use the default.
-            print()
-            response = None
-        except KeyboardInterrupt:
-            # If the user hits CTRL+C, just exit the process.
-            print()
-            raise
-
+        response = str_prompt(prompt, choices=(true_text, false_text))
         if not response:
             return default
         if true_value.startswith(response):
