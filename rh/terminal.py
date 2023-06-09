@@ -29,6 +29,12 @@ del _path
 import rh.shell
 
 
+# This will erase all content in the current line after the cursor.  This is
+# useful for partial updates & progress messages as the terminal can display
+# it better.
+CSI_ERASE_LINE_AFTER = '\x1b[K'
+
+
 class Color(object):
     """Conditionally wraps text in ANSI color escape sequences."""
 
@@ -36,7 +42,7 @@ class Color(object):
     BOLD = -1
     COLOR_START = '\033[1;%dm'
     BOLD_START = '\033[1m'
-    RESET = '\033[0m'
+    RESET = '\033[m'
 
     def __init__(self, enabled=None):
         """Create a new Color object, optionally disabling color output.
@@ -51,7 +57,7 @@ class Color(object):
         """Returns a start color code.
 
         Args:
-          color: Color to use, .e.g BLACK, RED, etc.
+          color: Color to use, e.g. BLACK, RED, etc...
 
         Returns:
           If color is enabled, returns an ANSI sequence to start the given
@@ -111,7 +117,7 @@ def print_status_line(line, print_newline=False):
       print_newline: Print a newline at the end, if sys.stderr is a TTY.
     """
     if sys.stderr.isatty():
-        output = '\r' + line + '\x1B[K'
+        output = '\r' + line + CSI_ERASE_LINE_AFTER
         if print_newline:
             output += '\n'
     else:
