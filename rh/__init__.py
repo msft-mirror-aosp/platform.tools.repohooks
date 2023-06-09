@@ -18,4 +18,4 @@ import collections
 
 
 # An object representing the git project that we're testing currently.
-Project = collections.namedtuple('Project', ['name', 'dir', 'remote'])
+Project = collections.namedtuple('Project', ['name', 'dir'])
