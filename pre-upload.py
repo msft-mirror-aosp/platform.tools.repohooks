@@ -438,10 +438,11 @@ def _identify_project(path, from_git=False):
         cmd = ['git', 'rev-parse', '--show-toplevel']
         project_path = rh.utils.run(cmd, capture_output=True).stdout.strip()
         cmd = ['git', 'rev-parse', '--show-superproject-working-tree']
-        superproject_path = rh.utils.run(cmd, capture_output=True).stdout.strip()
+        superproject_path = rh.utils.run(
+            cmd, capture_output=True).stdout.strip()
         module_path = project_path[len(superproject_path) + 1:]
         cmd = ['git', 'config', '-f', '.gitmodules',
-               '--name-only', '--get-regexp', '^submodule\..*\.path$',
+               '--name-only', '--get-regexp', r'^submodule\..*\.path$',
                f"^{module_path}$"]
         module_name = rh.utils.run(cmd, cwd=superproject_path,
                                    capture_output=True).stdout.strip()
