@@ -99,23 +99,8 @@ class Color(object):
                 self._enabled = not rh.shell.boolean_shell_value(
                     os.environ['NOCOLOR'], False)
             else:
-                self._enabled = is_tty(sys.stderr)
+                self._enabled = sys.stderr.isatty()
         return self._enabled
-
-
-def is_tty(fh):
-    """Returns whether the specified file handle is a TTY.
-
-    Args:
-      fh: File handle to check.
-
-    Returns:
-      True if |fh| is a TTY
-    """
-    try:
-        return os.isatty(fh.fileno())
-    except IOError:
-        return False
 
 
 def print_status_line(line, print_newline=False):
@@ -125,7 +110,7 @@ def print_status_line(line, print_newline=False):
       line: String to print.
       print_newline: Print a newline at the end, if sys.stderr is a TTY.
     """
-    if is_tty(sys.stderr):
+    if sys.stderr.isatty():
         output = '\r' + line + '\x1B[K'
         if print_newline:
             output += '\n'
