@@ -185,7 +185,7 @@ def _process_hook_results(results):
         if result:
             ret = ''
             if result.files:
-                ret += f'  FILES: {result.files}'
+                ret += f'  FILES: {rh.shell.cmd_to_str(result.files)}\n'
             lines = result.error.splitlines()
             ret += '\n'.join(f'    {x}' for x in lines)
             if result.is_warning():
