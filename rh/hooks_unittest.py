@@ -307,8 +307,7 @@ class BuiltinHooksTests(unittest.TestCase):
     """Verify the builtin hooks."""
 
     def setUp(self):
-        self.project = rh.Project(name='project-name', dir='/.../repo/dir',
-                                  remote='remote')
+        self.project = rh.Project(name='project-name', dir='/.../repo/dir')
         self.options = rh.hooks.HookOptions('hook name', [], {})
 
     def _test_commit_messages(self, func, accept, msgs, files=None):
