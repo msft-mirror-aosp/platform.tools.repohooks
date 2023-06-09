@@ -422,7 +422,7 @@ def main(project_list, worktree_list=None, **_kwargs):
         color = rh.terminal.Color()
         print(color.color(color.RED, 'FATAL') +
               ': Preupload failed due to above error(s).\n'
-              f'For more info, please see:\n{REPOHOOKS_URL}',
+              f'For more info, see: {REPOHOOKS_URL}',
               file=sys.stderr)
         sys.exit(1)
 
