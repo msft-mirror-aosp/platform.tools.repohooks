@@ -14,13 +14,13 @@
 
 """Functions that implement the actual checks."""
 
-import collections
 import fnmatch
 import json
 import os
 import platform
 import re
 import sys
+from typing import Callable, NamedTuple
 
 _path = os.path.realpath(__file__ + '/../..')
 if sys.path[0] != _path:
@@ -243,8 +243,11 @@ class HookOptions(object):
         return self.expand_vars([tool_path])[0]
 
 
-# A callable hook.
-CallableHook = collections.namedtuple('CallableHook', ('name', 'hook', 'scope'))
+class CallableHook(NamedTuple):
+    """A callable hook."""
+    name: str
+    hook: Callable
+    scope: ExclusionScope
 
 
 def _run(cmd, **kwargs):
