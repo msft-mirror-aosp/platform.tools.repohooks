@@ -127,7 +127,7 @@ class Output(object):
         Args:
           error: error string.
         """
-        self.error(self._curr_hook_name, error)
+        self.error(f'{self._curr_hook_name} hook', error)
 
     def hook_warning(self, warning):
         """Print a warning for a single hook.
