@@ -128,6 +128,40 @@ def redirect_stdin(new_target):
         sys.stdin = old
 
 
+class StringPromptTests(unittest.TestCase):
+    """Verify behavior of str_prompt."""
+
+    def setUp(self):
+        self.stdin = io.StringIO()
+
+    def set_stdin(self, value: str) -> None:
+        """Set stdin wrapper to a string."""
+        self.stdin.seek(0)
+        self.stdin.write(value)
+        self.stdin.truncate()
+        self.stdin.seek(0)
+
+    def test_defaults(self):
+        """Test default behavior."""
+        stdout = io.StringIO()
+        with redirect_stdin(self.stdin), contextlib.redirect_stdout(stdout):
+            # Test EOF behavior.
+            self.assertIsNone(rh.terminal.str_prompt('foo', ('a', 'b')))
+
+            # Test enter behavior.
+            self.set_stdin('\n')
+            self.assertEqual(rh.terminal.str_prompt('foo', ('a', 'b')), '')
+
+            # Lowercase inputs.
+            self.set_stdin('Ok')
+            self.assertEqual(rh.terminal.str_prompt('foo', ('a', 'b')), 'ok')
+
+            # Don't lowercase inputs.
+            self.set_stdin('Ok')
+            self.assertEqual(
+                rh.terminal.str_prompt('foo', ('a', 'b'), lower=False), 'Ok')
+
+
 class BooleanPromptTests(unittest.TestCase):
     """Verify behavior of boolean_prompt."""
 
