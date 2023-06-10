@@ -293,7 +293,7 @@ def _run_project_hooks_in_cwd(project_name, proj_dir, output, from_git=False, co
                      f'{e}\nDid you run repo start?  Is your HEAD detached?')
         return False
 
-    project = rh.Project(name=project_name, dir=proj_dir, remote=remote)
+    project = rh.Project(name=project_name, dir=proj_dir)
     rel_proj_dir = os.path.relpath(proj_dir, rh.git.find_repo_root())
 
     os.environ.update({
@@ -422,7 +422,7 @@ def main(project_list, worktree_list=None, **_kwargs):
         color = rh.terminal.Color()
         print(color.color(color.RED, 'FATAL') +
               ': Preupload failed due to above error(s).\n'
-              f'For more info, please see:\n{REPOHOOKS_URL}',
+              f'For more info, see: {REPOHOOKS_URL}',
               file=sys.stderr)
         sys.exit(1)
 
