@@ -136,18 +136,6 @@ def print_status_line(line, print_newline=False):
     sys.stderr.flush()
 
 
-def get_input(prompt):
-    """Python 2/3 glue for raw_input/input differences."""
-    try:
-        # pylint: disable=raw_input-builtin
-        return raw_input(prompt)
-    except NameError:
-        # Python 3 renamed raw_input() to input(), which is safe to call since
-        # it does not evaluate the input.
-        # pylint: disable=bad-builtin,input-builtin
-        return input(prompt)
-
-
 def boolean_prompt(prompt='Do you want to continue?', default=True,
                    true_value='yes', false_value='no', prolog=None):
     """Helper function for processing boolean choice prompts.
@@ -165,22 +153,22 @@ def boolean_prompt(prompt='Do you want to continue?', default=True,
     true_value, false_value = true_value.lower(), false_value.lower()
     true_text, false_text = true_value, false_value
     if true_value == false_value:
-        raise ValueError('true_value and false_value must differ: got %r'
-                         % true_value)
+        raise ValueError(
+            f'true_value and false_value must differ: got {true_value!r}')
 
     if default:
         true_text = true_text[0].upper() + true_text[1:]
     else:
         false_text = false_text[0].upper() + false_text[1:]
 
-    prompt = ('\n%s (%s/%s)? ' % (prompt, true_text, false_text))
+    prompt = f'\n{prompt} ({true_text}/{false_text})? '
 
     if prolog:
-        prompt = ('\n%s\n%s' % (prolog, prompt))
+        prompt = f'\n{prolog}\n{prompt}'
 
     while True:
         try:
-            response = get_input(prompt).lower()
+            response = input(prompt).lower()  # pylint: disable=bad-builtin
         except EOFError:
             # If the user hits CTRL+D, or stdin is disabled, use the default.
             print()
