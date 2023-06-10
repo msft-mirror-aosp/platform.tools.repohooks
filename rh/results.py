@@ -16,6 +16,7 @@
 
 import os
 import sys
+from typing import List, Optional
 
 _path = os.path.realpath(__file__ + '/../..')
 if sys.path[0] != _path:
@@ -26,7 +27,8 @@ del _path
 class HookResult(object):
     """A single hook result."""
 
-    def __init__(self, hook, project, commit, error, files=(), fixup_func=None):
+    def __init__(self, hook, project, commit, error, files=(),
+                 fixup_cmd: Optional[List[str]] = None):
         """Initialize.
 
         Args:
@@ -36,17 +38,16 @@ class HookResult(object):
           error: A string representation of the hook's result.  Empty on
               success.
           files: The list of files that were involved in the hook execution.
-          fixup_func: A callable that will attempt to automatically fix errors
-              found in the hook's execution.  Returns an non-empty string if
-              this, too, fails.  Can be None if the hook does not support
-              automatically fixing errors.
+          fixup_cmd: A command that can automatically fix errors found in the
+              hook's execution.  Can be None if the hook does not support
+              automatic fixups.
         """
         self.hook = hook
         self.project = project
         self.commit = commit
         self.error = error
         self.files = files
-        self.fixup_func = fixup_func
+        self.fixup_cmd = fixup_cmd
 
     def __bool__(self):
         return bool(self.error)
@@ -59,10 +60,10 @@ class HookCommandResult(HookResult):
     """A single hook result based on a CompletedProcess."""
 
     def __init__(self, hook, project, commit, result, files=(),
-                 fixup_func=None):
+                 fixup_cmd=None):
         HookResult.__init__(self, hook, project, commit,
                             result.stderr if result.stderr else result.stdout,
-                            files=files, fixup_func=fixup_func)
+                            files=files, fixup_cmd=fixup_cmd)
         self.result = result
 
     def __bool__(self):
