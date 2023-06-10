@@ -293,7 +293,7 @@ def _run_project_hooks_in_cwd(project_name, proj_dir, output, from_git=False, co
                      f'{e}\nDid you run repo start?  Is your HEAD detached?')
         return False
 
-    project = rh.Project(name=project_name, dir=proj_dir, remote=remote)
+    project = rh.Project(name=project_name, dir=proj_dir)
     rel_proj_dir = os.path.relpath(proj_dir, rh.git.find_repo_root())
 
     os.environ.update({
