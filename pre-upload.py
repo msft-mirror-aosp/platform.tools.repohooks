@@ -75,6 +75,8 @@ class Output(object):
         self.project_name = project_name
         self.num_hooks = None
         self.hook_index = 0
+        self.num_commits = None
+        self.commit_index = 0
         self.success = True
         self.start_time = datetime.datetime.now()
         self.hook_start_time = None
@@ -88,6 +90,15 @@ class Output(object):
         """
         self.num_hooks = num_hooks
 
+    def set_num_commits(self, num_commits: int) -> None:
+        """Keep track of how many commits we'll be running.
+
+        Args:
+          num_commits: Number of commits to be run.
+        """
+        self.num_commits = num_commits
+        self.commit_index = 1
+
     def commit_start(self, commit, commit_summary):
         """Emit status for new commit.
 
@@ -95,9 +106,14 @@ class Output(object):
           commit: commit hash.
           commit_summary: commit summary.
         """
-        status_line = f'[{self.COMMIT} {commit[0:12]}] {commit_summary}'
+        status_line = (
+            f'[{self.COMMIT} '
+            f'{self.commit_index}/{self.num_commits} '
+            f'{commit[0:12]}] {commit_summary}'
+        )
         rh.terminal.print_status_line(status_line, print_newline=True)
         self.hook_index = 1
+        self.commit_index += 1
 
     def hook_start(self, hook_name):
         """Emit status before the start of a hook.
@@ -315,6 +331,7 @@ def _run_project_hooks_in_cwd(project_name, proj_dir, output, from_git=False, co
     if not commit_list:
         commit_list = rh.git.get_commits(
             ignore_merged_commits=config.ignore_merged_commits)
+    output.set_num_commits(len(commit_list))
 
     ret = True
     fixup_list = []
