@@ -322,9 +322,9 @@ def _run_project_hooks_in_cwd(project_name, proj_dir, output, from_git=False, co
         output.commit_start(commit=commit, commit_summary=commit_summary)
 
         for name, hook, exclusion_scope in hooks:
-            output.hook_start(name)
             if rel_proj_dir in exclusion_scope:
-                break
+                continue
+            output.hook_start(name)
             hook_results = hook(project, commit, desc, diff)
             output.hook_finish()
             (error, warning) = _process_hook_results(hook_results)
