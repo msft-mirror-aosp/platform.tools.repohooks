@@ -225,14 +225,14 @@ def _get_project_config(from_git=False):
     return rh.config.PreUploadSettings(paths=paths, global_paths=global_paths)
 
 
-def _attempt_fixes(fixup_func_list, commit_list):
-    """Attempts to run |fixup_func_list| given |commit_list|."""
-    if len(fixup_func_list) != 1:
+def _attempt_fixes(fixup_list, commit_list, cwd):
+    """Attempts to run |fixup_list| given |commit_list|."""
+    if len(fixup_list) != 1:
         # Only single fixes will be attempted, since various fixes might
         # interact with each other.
         return
 
-    hook_name, commit, fixup_func = fixup_func_list[0]
+    hook_name, commit, fixup_cmd, fixup_files = fixup_list[0]
 
     if commit != commit_list[0]:
         # If the commit is not at the top of the stack, git operations might be
@@ -246,10 +246,17 @@ def _attempt_fixes(fixup_func_list, commit_list):
     if not rh.terminal.boolean_prompt(prompt):
         return
 
-    result = fixup_func()
-    if result:
+    result = rh.utils.run(
+        fixup_cmd + list(fixup_files),
+        cwd=cwd,
+        combine_stdout_stderr=True,
+        capture_output=True,
+        check=False,
+        input='',
+    )
+    if result.returncode:
         print(f'Attempt to fix "{hook_name}" for commit "{commit}" failed: '
-              f'{result}',
+              f'{result.stdout}',
               file=sys.stderr)
     else:
         print('Fix successfully applied. Amend the current commit before '
@@ -310,7 +317,7 @@ def _run_project_hooks_in_cwd(project_name, proj_dir, output, from_git=False, co
             ignore_merged_commits=config.ignore_merged_commits)
 
     ret = True
-    fixup_func_list = []
+    fixup_list = []
 
     for commit in commit_list:
         # Mix in some settings for our hooks.
@@ -336,12 +343,12 @@ def _run_project_hooks_in_cwd(project_name, proj_dir, output, from_git=False, co
                     ret = False
                     output.hook_error(error)
                 for result in hook_results:
-                    if result.fixup_func:
-                        fixup_func_list.append((name, commit,
-                                                result.fixup_func))
+                    if result.fixup_cmd:
+                        fixup_list.append(
+                            (name, commit, result.fixup_cmd, result.files))
 
-    if fixup_func_list:
-        _attempt_fixes(fixup_func_list, commit_list)
+    if fixup_list:
+        _attempt_fixes(fixup_list, commit_list, proj_dir)
 
     return ret
 

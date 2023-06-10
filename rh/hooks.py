@@ -317,26 +317,11 @@ def _get_build_os_name():
     return 'linux-x86'
 
 
-def _fixup_func_caller(cmd, **kwargs):
-    """Wraps |cmd| around a callable automated fixup.
-
-    For hooks that support automatically fixing errors after running (e.g. code
-    formatters), this function provides a way to run |cmd| as the |fixup_func|
-    parameter in HookCommandResult.
-    """
-    def wrapper():
-        result = _run(cmd, **kwargs)
-        if result.returncode not in (None, 0):
-            return result.stdout
-        return None
-    return wrapper
-
-
-def _check_cmd(hook_name, project, commit, cmd, fixup_func=None, **kwargs):
+def _check_cmd(hook_name, project, commit, cmd, fixup_cmd=None, **kwargs):
     """Runs |cmd| and returns its result as a HookCommandResult."""
     return [rh.results.HookCommandResult(hook_name, project, commit,
                                          _run(cmd, **kwargs),
-                                         fixup_func=fixup_func)]
+                                         fixup_cmd=fixup_cmd)]
 
 
 # Where helper programs exist.
@@ -370,12 +355,11 @@ def check_bpfmt(project, commit, _desc, diff, options=None):
             fixup_cmd = [bpfmt, '-w']
             if '-s' in bpfmt_options:
                 fixup_cmd.append('-s')
-            fixup_cmd.append(os.path.join(project.dir, d.file))
             ret.append(rh.results.HookResult(
                 'bpfmt', project, commit,
                 error=result.stdout,
                 files=(d.file,),
-                fixup_func=_fixup_func_caller(fixup_cmd)))
+                fixup_cmd=fixup_cmd))
     return ret
 
 
@@ -397,9 +381,9 @@ def check_clang_format(project, commit, _desc, diff, options=None):
                   git_clang_format] +
                  options.args(('--style', 'file', '--commit', commit), diff))
     cmd = [tool] + tool_args
-    fixup_func = _fixup_func_caller([tool, '--fix'] + tool_args)
+    fixup_cmd = [tool, '--fix'] + tool_args
     return _check_cmd('clang-format', project, commit, cmd,
-                      fixup_func=fixup_func)
+                      fixup_cmd=fixup_cmd)
 
 
 def check_google_java_format(project, commit, _desc, _diff, options=None):
@@ -412,9 +396,9 @@ def check_google_java_format(project, commit, _desc, _diff, options=None):
                  '--google-java-format-diff', google_java_format_diff,
                  '--commit', commit] + options.args()
     cmd = [tool] + tool_args
-    fixup_func = _fixup_func_caller([tool, '--fix'] + tool_args)
+    fixup_cmd = [tool, '--fix'] + tool_args
     return _check_cmd('google-java-format', project, commit, cmd,
-                      fixup_func=fixup_func)
+                      fixup_cmd=fixup_cmd)
 
 
 def check_ktfmt(project, commit, _desc, diff, options=None):
@@ -442,15 +426,14 @@ def check_ktfmt(project, commit, _desc, diff, options=None):
     result = _run(cmd)
     if result.stdout:
         paths = [os.path.join(project.dir, x.file) for x in filtered]
-        fixup_cmd = [ktfmt] + args + paths
+        fixup_cmd = [ktfmt] + args
         error = (
             '\nKotlin files need formatting.\n' +
             'To reformat the kotlin files in this commit:\n' +
-            rh.shell.cmd_to_str(fixup_cmd)
+            rh.shell.cmd_to_str(fixup_cmd + paths)
         )
-        fixup_func = _fixup_func_caller(fixup_cmd)
         return [rh.results.HookResult('ktfmt', project, commit, error=error,
-                                      files=paths, fixup_func=fixup_func)]
+                                      files=paths, fixup_cmd=fixup_cmd)]
     return None
 
 
@@ -886,10 +869,10 @@ def check_gofmt(project, commit, _desc, diff, options=None):
         data = rh.git.get_file_content(commit, d.file)
         result = _run(cmd, input=data)
         if result.stdout:
-            fixup_func = _fixup_func_caller([gofmt, '-w', d.file])
+            fixup_cmd = [gofmt, '-w']
             ret.append(rh.results.HookResult(
                 'gofmt', project, commit, error=result.stdout,
-                files=(d.file,), fixup_func=fixup_func))
+                files=(d.file,), fixup_cmd=fixup_cmd))
     return ret
 
 
@@ -1047,12 +1030,10 @@ def check_aidl_format(project, commit, _desc, diff, options=None):
         data = rh.git.get_file_content(commit, d.file)
         result = _run(diff_cmd, input=data)
         if result.stdout:
-            fix_cmd = [aidl_format, '-w', '--clang-format-path', clang_format,
-                       d.file]
-            fixup_func = _fixup_func_caller(fix_cmd)
+            fixup_cmd = [aidl_format, '-w', '--clang-format-path', clang_format]
             ret.append(rh.results.HookResult(
                 'aidl-format', project, commit, error=result.stdout,
-                files=(d.file,), fixup_func=fixup_func))
+                files=(d.file,), fixup_cmd=fixup_cmd))
     return ret
 
 
