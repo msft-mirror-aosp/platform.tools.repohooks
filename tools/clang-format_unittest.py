@@ -95,6 +95,14 @@ class GitClangFormatExit(unittest.TestCase):
                 run_clang_format(script, ['--working-tree'])
             self.assertIn('clang-format failed', e.exception.stderr)
 
+    def test_fix_exit_1_output(self):
+        """Test fix with incorrect patch syntax."""
+        with git_clang_format('echo bad patch; exit 1') as script:
+            with self.assertRaises(rh.utils.CalledProcessError) as e:
+                run_clang_format(script, ['--working-tree', '--fix'])
+            self.assertIn('Error: Unable to automatically fix things',
+                          e.exception.stderr)
+
 
 if __name__ == '__main__':
     unittest.main()
