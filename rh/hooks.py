@@ -425,15 +425,10 @@ def check_ktfmt(project, commit, _desc, diff, options=None):
         ('${PREUPLOAD_FILES}',), filtered)
     result = _run(cmd)
     if result.stdout:
-        paths = [os.path.join(project.dir, x.file) for x in filtered]
         fixup_cmd = [ktfmt] + args
-        error = (
-            '\nKotlin files need formatting.\n' +
-            'To reformat the kotlin files in this commit:\n' +
-            rh.shell.cmd_to_str(fixup_cmd + paths)
-        )
-        return [rh.results.HookResult('ktfmt', project, commit, error=error,
-                                      files=paths, fixup_cmd=fixup_cmd)]
+        return [rh.results.HookResult(
+            'ktfmt', project, commit, error='Formatting errors detected',
+            files=[x.file for x in filtered], fixup_cmd=fixup_cmd)]
     return None
 
 
