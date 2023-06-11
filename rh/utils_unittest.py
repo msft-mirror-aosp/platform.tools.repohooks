@@ -117,6 +117,22 @@ class CalledProcessErrorTests(unittest.TestCase):
         err = rh.utils.CalledProcessError(0, ['mycmd'])
         self.assertNotEqual('', repr(err))
 
+    def test_output(self):
+        """Make sure .output is removed and .stdout works."""
+        e = rh.utils.CalledProcessError(
+            0, ['true'], stdout='STDOUT', stderr='STDERR')
+        with self.assertRaises(AttributeError):
+            assert e.output is None
+        assert e.stdout == 'STDOUT'
+        assert e.stderr == 'STDERR'
+
+        e.stdout = 'STDout'
+        e.stderr = 'STDerr'
+        with self.assertRaises(AttributeError):
+            assert e.output is None
+        assert e.stdout == 'STDout'
+        assert e.stderr == 'STDerr'
+
 
 class RunCommandTests(unittest.TestCase):
     """Verify behavior of run helper."""
