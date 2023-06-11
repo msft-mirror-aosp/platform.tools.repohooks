@@ -22,6 +22,7 @@ when developing.
 import argparse
 import datetime
 import os
+import signal
 import sys
 from typing import List, Optional
 
@@ -551,9 +552,13 @@ def direct_main(argv):
         if not opts.project:
             parser.error(f"Couldn't identify the project of {opts.dir}")
 
-    if _run_projects_hooks([opts.project], [opts.dir], from_git=opts.git,
-                           commit_list=opts.commits):
-        return 0
+    try:
+        if _run_projects_hooks([opts.project], [opts.dir], from_git=opts.git,
+                               commit_list=opts.commits):
+            return 0
+    except KeyboardInterrupt:
+        print('Aborting execution early due to user interrupt', file=sys.stderr)
+        return 128 + signal.SIGINT
     return 1
 
 
