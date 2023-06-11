@@ -829,16 +829,14 @@ class BuiltinHooksTests(unittest.TestCase):
                 rh.git.RawDiffEntry(file='baz/blah.kt')]
         ret = rh.hooks.check_ktfmt(
             self.project, 'commit', 'desc', diff, options=self.options)
-        self.assertListEqual(ret[0].files, ['/.../repo/dir/foo.kt',
-                                            '/.../repo/dir/baz/blah.kt'])
+        self.assertListEqual(ret[0].files, ['foo.kt', 'baz/blah.kt'])
         diff = [rh.git.RawDiffEntry(file='foo/f1.kt'),
                 rh.git.RawDiffEntry(file='bar/f2.kt'),
                 rh.git.RawDiffEntry(file='baz/f2.kt')]
         ret = rh.hooks.check_ktfmt(self.project, 'commit', 'desc', diff,
                                    options=rh.hooks.HookOptions('hook name', [
                                        '--include-dirs=foo,baz'], {}))
-        self.assertListEqual(ret[0].files, ['/.../repo/dir/foo/f1.kt',
-                                            '/.../repo/dir/baz/f2.kt'])
+        self.assertListEqual(ret[0].files, ['foo/f1.kt', 'baz/f2.kt'])
 
     def test_pylint(self, mock_check, _mock_run):
         """Verify the pylint builtin hook."""
