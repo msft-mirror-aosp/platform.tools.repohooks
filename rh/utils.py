@@ -369,27 +369,18 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
         old_sigint = signal.getsignal(signal.SIGINT)
         handler = functools.partial(_kill_child_process, proc, int_timeout,
                                     kill_timeout, cmd, old_sigint)
-        # We have to ignore ValueError in case we're run from a thread.
-        try:
-            signal.signal(signal.SIGINT, handler)
-        except ValueError:
-            old_sigint = None
+        signal.signal(signal.SIGINT, handler)
 
         old_sigterm = signal.getsignal(signal.SIGTERM)
         handler = functools.partial(_kill_child_process, proc, int_timeout,
                                     kill_timeout, cmd, old_sigterm)
-        try:
-            signal.signal(signal.SIGTERM, handler)
-        except ValueError:
-            old_sigterm = None
+        signal.signal(signal.SIGTERM, handler)
 
         try:
             (result.stdout, result.stderr) = proc.communicate(input)
         finally:
-            if old_sigint is not None:
-                signal.signal(signal.SIGINT, old_sigint)
-            if old_sigterm is not None:
-                signal.signal(signal.SIGTERM, old_sigterm)
+            signal.signal(signal.SIGINT, old_sigint)
+            signal.signal(signal.SIGTERM, old_sigterm)
 
             if popen_stdout:
                 # The linter is confused by how stdout is a file & an int.
