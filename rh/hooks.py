@@ -858,13 +858,14 @@ def check_gofmt(project, commit, _desc, diff, options=None):
         return None
 
     gofmt = options.tool_path('gofmt')
-    cmd = [gofmt, '-l'] + options.args((), filtered)
+    cmd = [gofmt, '-l'] + options.args()
+    fixup_cmd = [gofmt, '-w'] + options.args()
+
     ret = []
     for d in filtered:
         data = rh.git.get_file_content(commit, d.file)
         result = _run(cmd, input=data)
         if result.stdout:
-            fixup_cmd = [gofmt, '-w']
             ret.append(rh.results.HookResult(
                 'gofmt', project, commit, error=result.stdout,
                 files=(d.file,), fixup_cmd=fixup_cmd))
