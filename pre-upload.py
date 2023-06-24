@@ -20,6 +20,7 @@ when developing.
 """
 
 import argparse
+import concurrent.futures
 import datetime
 import os
 import signal
@@ -292,6 +293,7 @@ def _run_project_hooks_in_cwd(
     project_name: str,
     proj_dir: str,
     output: Output,
+    jobs: Optional[int] = None,
     from_git: bool = False,
     commit_list: Optional[List[str]] = None,
 ) -> rh.results.ProjectResults:
@@ -301,6 +303,7 @@ def _run_project_hooks_in_cwd(
       project_name: The name of this project.
       proj_dir: The directory for this project (for passing on in metadata).
       output: Helper for summarizing output/errors to the user.
+      jobs: How many hooks to run in parallel.
       from_git: If true, we are called from git directly and repo should not be
           used.
       commit_list: A list of commits to run hooks against.  If None or empty
@@ -355,28 +358,40 @@ def _run_project_hooks_in_cwd(
             ignore_merged_commits=config.ignore_merged_commits)
     output.set_num_commits(len(commit_list))
 
-    for commit in commit_list:
-        # Mix in some settings for our hooks.
-        os.environ['PREUPLOAD_COMMIT'] = commit
-        diff = rh.git.get_affected_files(commit)
-        desc = rh.git.get_commit_desc(commit)
-        os.environ['PREUPLOAD_COMMIT_MESSAGE'] = desc
+    def _run_hook(hook, project, commit, desc, diff):
+        """Run a hook, gather stats, and process its results."""
+        start = datetime.datetime.now()
+        results = hook.hook(project, commit, desc, diff)
+        (error, warning) = _process_hook_results(results)
+        duration = datetime.datetime.now() - start
+        return (hook, results, error, warning, duration)
 
-        commit_summary = desc.split('\n', 1)[0]
-        output.commit_start(hooks, commit, commit_summary)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as executor:
+        for commit in commit_list:
+            # Mix in some settings for our hooks.
+            os.environ['PREUPLOAD_COMMIT'] = commit
+            diff = rh.git.get_affected_files(commit)
+            desc = rh.git.get_commit_desc(commit)
+            os.environ['PREUPLOAD_COMMIT_MESSAGE'] = desc
 
-        for hook in hooks:
-            start = datetime.datetime.now()
-            hook_results = hook.hook(project, commit, desc, diff)
-            duration = datetime.datetime.now() - start
-            ret.add_results(hook_results)
-            (error, warning) = _process_hook_results(hook_results)
-            if error is not None or warning is not None:
-                if warning is not None:
-                    output.hook_warning(hook, warning)
-                if error is not None:
-                    output.hook_error(hook, error)
-            output.hook_finish(hook, duration)
+            commit_summary = desc.split('\n', 1)[0]
+            output.commit_start(hooks, commit, commit_summary)
+
+            futures = (
+                executor.submit(_run_hook, hook, project, commit, desc, diff)
+                for hook in hooks
+            )
+            future_results = (
+                x.result() for x in concurrent.futures.as_completed(futures)
+            )
+            for hook, hook_results, error, warning, duration in future_results:
+                ret.add_results(hook_results)
+                if error is not None or warning is not None:
+                    if warning is not None:
+                        output.hook_warning(hook, warning)
+                    if error is not None:
+                        output.hook_error(hook, error)
+                output.hook_finish(hook, duration)
 
     _attempt_fixes(ret, commit_list)
 
@@ -386,6 +401,7 @@ def _run_project_hooks_in_cwd(
 def _run_project_hooks(
     project_name: str,
     proj_dir: Optional[str] = None,
+    jobs: Optional[int] = None,
     from_git: bool = False,
     commit_list: Optional[List[str]] = None,
 ) -> rh.results.ProjectResults:
@@ -395,6 +411,7 @@ def _run_project_hooks(
       project_name: The name of project to run hooks for.
       proj_dir: If non-None, this is the directory the project is in.  If None,
           we'll ask repo.
+      jobs: How many hooks to run in parallel.
       from_git: If true, we are called from git directly and repo should not be
           used.
       commit_list: A list of commits to run hooks against.  If None or empty
@@ -426,9 +443,9 @@ def _run_project_hooks(
     try:
         # Hooks assume they are run from the root of the project.
         os.chdir(proj_dir)
-        return _run_project_hooks_in_cwd(project_name, proj_dir, output,
-                                         from_git=from_git,
-                                         commit_list=commit_list)
+        return _run_project_hooks_in_cwd(
+            project_name, proj_dir, output, jobs=jobs, from_git=from_git,
+            commit_list=commit_list)
     finally:
         output.finish()
         os.chdir(pwd)
@@ -437,6 +454,7 @@ def _run_project_hooks(
 def _run_projects_hooks(
     project_list: List[str],
     worktree_list: List[Optional[str]],
+    jobs: Optional[int] = None,
     from_git: bool = False,
     commit_list: Optional[List[str]] = None,
 ) -> bool:
@@ -445,6 +463,7 @@ def _run_projects_hooks(
     Args:
       project_list: List of project names.
       worktree_list: List of project checkouts.
+      jobs: How many hooks to run in parallel.
       from_git: If true, we are called from git directly and repo should not be
           used.
       commit_list: A list of commits to run hooks against.  If None or empty
@@ -459,6 +478,7 @@ def _run_projects_hooks(
         result = _run_project_hooks(
             project,
             proj_dir=worktree,
+            jobs=jobs,
             from_git=from_git,
             commit_list=commit_list,
         )
@@ -546,6 +566,11 @@ def direct_main(argv):
                         'hooks get run, since some hooks are project-specific.'
                         'If not specified, `repo` will be used to figure this '
                         'out based on the dir.')
+    parser.add_argument('-j', '--jobs', type=int,
+                        help='Run up to this many hooks in parallel. Setting '
+                        'to 1 forces serial execution, and the default '
+                        'automatically chooses an appropriate number for the '
+                        'current system.')
     parser.add_argument('commits', nargs='*',
                         help='Check specific commits')
     opts = parser.parse_args(argv)
@@ -571,8 +596,8 @@ def direct_main(argv):
             parser.error(f"Couldn't identify the project of {opts.dir}")
 
     try:
-        if _run_projects_hooks([opts.project], [opts.dir], from_git=opts.git,
-                               commit_list=opts.commits):
+        if _run_projects_hooks([opts.project], [opts.dir], jobs=opts.jobs,
+                               from_git=opts.git, commit_list=opts.commits):
             return 0
     except KeyboardInterrupt:
         print('Aborting execution early due to user interrupt', file=sys.stderr)
