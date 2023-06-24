@@ -74,22 +74,15 @@ class Output(object):
           project_name: name of project.
         """
         self.project_name = project_name
+        self.hooks = None
         self.num_hooks = None
-        self.hook_index = 0
         self.num_commits = None
         self.commit_index = 0
         self.success = True
         self.start_time = datetime.datetime.now()
         self.hook_start_time = None
-        self._curr_hook_name = None
-
-    def set_num_hooks(self, num_hooks):
-        """Keep track of how many hooks we'll be running.
-
-        Args:
-          num_hooks: number of hooks to be run.
-        """
-        self.num_hooks = num_hooks
+        # Cache number of invisible characters in our banner.
+        self._banner_esc_chars = len(self.COLOR.color(self.COLOR.YELLOW, ''))
 
     def set_num_commits(self, num_commits: int) -> None:
         """Keep track of how many commits we'll be running.
@@ -100,10 +93,11 @@ class Output(object):
         self.num_commits = num_commits
         self.commit_index = 1
 
-    def commit_start(self, commit, commit_summary):
+    def commit_start(self, hooks, commit, commit_summary):
         """Emit status for new commit.
 
         Args:
+          hooks: All the hooks to be run for this commit.
           commit: commit hash.
           commit_summary: commit summary.
         """
@@ -113,47 +107,58 @@ class Output(object):
             f'{commit[0:12]}] {commit_summary}'
         )
         rh.terminal.print_status_line(status_line, print_newline=True)
-        self.hook_index = 1
         self.commit_index += 1
 
-    def hook_start(self, hook_name):
-        """Emit status before the start of a hook.
+        # Initialize the pending hooks line too.
+        self.hooks = set(hooks)
+        self.num_hooks = len(hooks)
+        self.hook_banner()
 
-        Args:
-          hook_name: name of the hook.
-        """
-        self._curr_hook_name = hook_name
-        self.hook_start_time = datetime.datetime.now()
-        status_line = (f'[{self.RUNNING} {self.hook_index}/{self.num_hooks}] '
-                       f'{hook_name}')
-        self.hook_index += 1
+    def hook_banner(self):
+        """Display the banner for current set of hooks."""
+        pending = ', '.join(x.name for x in self.hooks)
+        status_line = (
+            f'[{self.RUNNING} '
+            f'{self.num_hooks - len(self.hooks)}/{self.num_hooks}] '
+            f'{pending}'
+        )
+        if self._banner_esc_chars and sys.stderr.isatty():
+            cols = os.get_terminal_size(sys.stderr.fileno()).columns
+            status_line = status_line[0:cols + self._banner_esc_chars]
         rh.terminal.print_status_line(status_line)
 
-    def hook_finish(self):
+    def hook_finish(self, hook, duration):
         """Finish processing any per-hook state."""
-        duration = datetime.datetime.now() - self.hook_start_time
+        self.hooks.remove(hook)
         if duration >= self._SLOW_HOOK_DURATION:
             d = rh.utils.timedelta_str(duration)
             self.hook_warning(
+                hook,
                 f'This hook took {d} to finish which is fairly slow for '
                 'developers.\nPlease consider moving the check to the '
                 'server/CI system instead.')
 
-    def hook_error(self, error):
+        # Show any hooks still pending.
+        if self.hooks:
+            self.hook_banner()
+
+    def hook_error(self, hook, error):
         """Print an error for a single hook.
 
         Args:
+          hook: The hook that generated the output.
           error: error string.
         """
-        self.error(f'{self._curr_hook_name} hook', error)
+        self.error(f'{hook.name} hook', error)
 
-    def hook_warning(self, warning):
+    def hook_warning(self, hook, warning):
         """Print a warning for a single hook.
 
         Args:
+          hook: The hook that generated the output.
           warning: warning string.
         """
-        status_line = f'[{self.WARNING}] {self._curr_hook_name}'
+        status_line = f'[{self.WARNING}] {hook.name}'
         rh.terminal.print_status_line(status_line, print_newline=True)
         print(warning, file=sys.stderr)
 
@@ -336,7 +341,6 @@ def _run_project_hooks_in_cwd(
     hooks = [x for x in hooks if rel_proj_dir not in x.scope]
     if not hooks:
         return ret
-    output.set_num_hooks(len(hooks))
 
     os.environ.update({
         'REPO_LREV': rh.git.get_commit_for_ref(upstream_branch),
@@ -359,19 +363,20 @@ def _run_project_hooks_in_cwd(
         os.environ['PREUPLOAD_COMMIT_MESSAGE'] = desc
 
         commit_summary = desc.split('\n', 1)[0]
-        output.commit_start(commit=commit, commit_summary=commit_summary)
+        output.commit_start(hooks, commit, commit_summary)
 
         for hook in hooks:
-            output.hook_start(hook.name)
+            start = datetime.datetime.now()
             hook_results = hook.hook(project, commit, desc, diff)
-            output.hook_finish()
+            duration = datetime.datetime.now() - start
             ret.add_results(hook_results)
             (error, warning) = _process_hook_results(hook_results)
             if error is not None or warning is not None:
                 if warning is not None:
-                    output.hook_warning(warning)
+                    output.hook_warning(hook, warning)
                 if error is not None:
-                    output.hook_error(error)
+                    output.hook_error(hook, error)
+            output.hook_finish(hook, duration)
 
     _attempt_fixes(ret, commit_list)
 
