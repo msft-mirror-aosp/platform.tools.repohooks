@@ -319,8 +319,6 @@ def _run_project_hooks_in_cwd(
     if not hooks:
         return ret
 
-    output.set_num_hooks(len(hooks))
-
     # Set up the environment like repo would with the forall command.
     try:
         remote = rh.git.get_upstream_remote()
@@ -333,6 +331,12 @@ def _run_project_hooks_in_cwd(
 
     project = rh.Project(name=project_name, dir=proj_dir)
     rel_proj_dir = os.path.relpath(proj_dir, rh.git.find_repo_root())
+
+    # Filter out the hooks to process.
+    hooks = [x for x in hooks if rel_proj_dir not in x.scope]
+    if not hooks:
+        return ret
+    output.set_num_hooks(len(hooks))
 
     os.environ.update({
         'REPO_LREV': rh.git.get_commit_for_ref(upstream_branch),
@@ -357,11 +361,9 @@ def _run_project_hooks_in_cwd(
         commit_summary = desc.split('\n', 1)[0]
         output.commit_start(commit=commit, commit_summary=commit_summary)
 
-        for name, hook, exclusion_scope in hooks:
-            if rel_proj_dir in exclusion_scope:
-                continue
-            output.hook_start(name)
-            hook_results = hook(project, commit, desc, diff)
+        for hook in hooks:
+            output.hook_start(hook.name)
+            hook_results = hook.hook(project, commit, desc, diff)
             output.hook_finish()
             ret.add_results(hook_results)
             (error, warning) = _process_hook_results(hook_results)
