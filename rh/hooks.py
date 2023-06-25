@@ -858,13 +858,14 @@ def check_gofmt(project, commit, _desc, diff, options=None):
         return None
 
     gofmt = options.tool_path('gofmt')
-    cmd = [gofmt, '-l'] + options.args((), filtered)
+    cmd = [gofmt, '-l'] + options.args()
+    fixup_cmd = [gofmt, '-w'] + options.args()
+
     ret = []
     for d in filtered:
         data = rh.git.get_file_content(commit, d.file)
         result = _run(cmd, input=data)
         if result.stdout:
-            fixup_cmd = [gofmt, '-w']
             ret.append(rh.results.HookResult(
                 'gofmt', project, commit, error=result.stdout,
                 files=(d.file,), fixup_cmd=fixup_cmd))
@@ -943,11 +944,9 @@ def check_rustfmt(project, commit, _desc, diff, options=None):
         # TODO(b/164111102): rustfmt stable does not support --check on stdin.
         # If no error is reported, compare stdin with stdout.
         if data != result.stdout:
-            msg = ('To fix, please run: ' +
-                   rh.shell.cmd_to_str(cmd + [d.file]))
             ret.append(rh.results.HookResult(
-                'rustfmt', project, commit, error=msg,
-                files=(d.file,)))
+                'rustfmt', project, commit, error='Files not formatted',
+                files=(d.file,), fixup_cmd=cmd))
     return ret
 
 
