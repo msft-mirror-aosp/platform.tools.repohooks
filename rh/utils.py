@@ -84,15 +84,24 @@ class CalledProcessError(subprocess.CalledProcessError):
     """
 
     def __init__(self, returncode, cmd, stdout=None, stderr=None, msg=None):
-        super().__init__(returncode, cmd, stdout)
-        # The parent class will set |output|, so delete it.
+        super().__init__(returncode, cmd, stdout, stderr=stderr)
+
+        # The parent class will set |output|, so delete it. If Python ever drops
+        # this output/stdout compat logic, we can drop this to match.
         del self.output
-        # TODO(vapier): When we're Python 3-only, delete this assignment as the
-        # parent handles it for us.
-        self.stdout = stdout
-        # TODO(vapier): When we're Python 3-only, move stderr to the init above.
-        self.stderr = stderr
+        self._stdout = stdout
+
         self.msg = msg
+
+    @property
+    def stdout(self):
+        """Override parent's usage of .output"""
+        return self._stdout
+
+    @stdout.setter
+    def stdout(self, value):
+        """Override parent's usage of .output"""
+        self._stdout = value
 
     @property
     def cmdstr(self):
@@ -360,18 +369,27 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
         old_sigint = signal.getsignal(signal.SIGINT)
         handler = functools.partial(_kill_child_process, proc, int_timeout,
                                     kill_timeout, cmd, old_sigint)
-        signal.signal(signal.SIGINT, handler)
+        # We have to ignore ValueError in case we're run from a thread.
+        try:
+            signal.signal(signal.SIGINT, handler)
+        except ValueError:
+            old_sigint = None
 
         old_sigterm = signal.getsignal(signal.SIGTERM)
         handler = functools.partial(_kill_child_process, proc, int_timeout,
                                     kill_timeout, cmd, old_sigterm)
-        signal.signal(signal.SIGTERM, handler)
+        try:
+            signal.signal(signal.SIGTERM, handler)
+        except ValueError:
+            old_sigterm = None
 
         try:
             (result.stdout, result.stderr) = proc.communicate(input)
         finally:
-            signal.signal(signal.SIGINT, old_sigint)
-            signal.signal(signal.SIGTERM, old_sigterm)
+            if old_sigint is not None:
+                signal.signal(signal.SIGINT, old_sigint)
+            if old_sigterm is not None:
+                signal.signal(signal.SIGTERM, old_sigterm)
 
             if popen_stdout:
                 # The linter is confused by how stdout is a file & an int.
