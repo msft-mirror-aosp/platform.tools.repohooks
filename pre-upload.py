@@ -64,6 +64,7 @@ class Output(object):
     PASSED = COLOR.color(COLOR.GREEN, 'PASSED')
     FAILED = COLOR.color(COLOR.RED, 'FAILED')
     WARNING = COLOR.color(COLOR.YELLOW, 'WARNING')
+    FIXUP = COLOR.color(COLOR.MAGENTA, 'FIXUP')
 
     # How long a hook is allowed to run before we warn that it is "too slow".
     _SLOW_HOOK_DURATION = datetime.timedelta(seconds=30)
@@ -174,6 +175,21 @@ class Output(object):
         rh.terminal.print_status_line(status_line, print_newline=True)
         print(error, file=sys.stderr)
         self.success = False
+
+    def hook_fixups(
+        self,
+        project_results: rh.results.ProjectResults,
+        hook_results: List[rh.results.HookResult],
+    ) -> None:
+        """Display summary of possible fixups for a single hook."""
+        for result in (x for x in hook_results if x.fixup_cmd):
+            cmd = result.fixup_cmd + list(result.files)
+            for line in (
+                f'[{self.FIXUP}] {result.hook} has automated fixups available',
+                f'  cd {rh.shell.quote(project_results.workdir)} && \\',
+                f'    {rh.shell.cmd_to_str(cmd)}',
+            ):
+                rh.terminal.print_status_line(line, print_newline=True)
 
     def finish(self):
         """Print summary for all the hooks."""
@@ -391,6 +407,7 @@ def _run_project_hooks_in_cwd(
                         output.hook_warning(hook, warning)
                     if error is not None:
                         output.hook_error(hook, error)
+                        output.hook_fixups(ret, hook_results)
                 output.hook_finish(hook, duration)
 
     _attempt_fixes(ret, commit_list)
