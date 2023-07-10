@@ -621,7 +621,7 @@ release notes, you need to include a starting and closing quote.
 Multi-line Relnote example:
 
 Relnote: "Added a new API `Class#getSize` to get the size of the class.
-This is useful if you need to know the size of the class."
+    This is useful if you need to know the size of the class."
 
 Single-line Relnote example:
 
