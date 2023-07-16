@@ -282,7 +282,7 @@ def _attempt_fixes(projects_results: List[rh.results.ProjectResults]) -> None:
 
     # If there's more than one fixup available, ask if they want to blindly run
     # them all, or prompt for them one-by-one.
-    mode = None
+    mode = 'some'
     if len(fixups) > 1:
         while True:
             response = rh.terminal.str_prompt(
