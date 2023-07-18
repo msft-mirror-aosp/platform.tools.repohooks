@@ -98,15 +98,11 @@ class CalledProcessErrorTests(unittest.TestCase):
     def test_basic(self):
         """Basic test we can create a normal instance."""
         rh.utils.CalledProcessError(0, ['mycmd'])
-        rh.utils.CalledProcessError(1, ['mycmd'], exception=Exception('bad'))
 
     def test_stringify(self):
         """Check stringify() handling."""
         # We don't assert much so we leave flexibility in changing format.
         err = rh.utils.CalledProcessError(0, ['mycmd'])
-        self.assertIn('mycmd', err.stringify())
-        err = rh.utils.CalledProcessError(
-            0, ['mycmd'], exception=Exception('bad'))
         self.assertIn('mycmd', err.stringify())
 
     def test_str(self):
@@ -114,18 +110,28 @@ class CalledProcessErrorTests(unittest.TestCase):
         # We don't assert much so we leave flexibility in changing format.
         err = rh.utils.CalledProcessError(0, ['mycmd'])
         self.assertIn('mycmd', str(err))
-        err = rh.utils.CalledProcessError(
-            0, ['mycmd'], exception=Exception('bad'))
-        self.assertIn('mycmd', str(err))
 
     def test_repr(self):
         """Check repr() handling."""
         # We don't assert much so we leave flexibility in changing format.
         err = rh.utils.CalledProcessError(0, ['mycmd'])
         self.assertNotEqual('', repr(err))
-        err = rh.utils.CalledProcessError(
-            0, ['mycmd'], exception=Exception('bad'))
-        self.assertNotEqual('', repr(err))
+
+    def test_output(self):
+        """Make sure .output is removed and .stdout works."""
+        e = rh.utils.CalledProcessError(
+            0, ['true'], stdout='STDOUT', stderr='STDERR')
+        with self.assertRaises(AttributeError):
+            assert e.output is None
+        assert e.stdout == 'STDOUT'
+        assert e.stderr == 'STDERR'
+
+        e.stdout = 'STDout'
+        e.stderr = 'STDerr'
+        with self.assertRaises(AttributeError):
+            assert e.output is None
+        assert e.stdout == 'STDout'
+        assert e.stderr == 'STDerr'
 
 
 class RunCommandTests(unittest.TestCase):
