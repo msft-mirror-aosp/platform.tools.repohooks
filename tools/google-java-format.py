@@ -17,8 +17,8 @@
 
 import argparse
 import os
+import shutil
 import sys
-from shutil import which
 
 _path = os.path.realpath(__file__ + '/../..')
 if sys.path[0] != _path:
@@ -28,8 +28,8 @@ del _path
 # We have to import our local modules after the sys.path tweak.  We can't use
 # relative imports because this is an executable program, not a module.
 # pylint: disable=wrong-import-position
-import rh.shell # pylint: disable=import-error
-import rh.utils # pylint: disable=import-error
+import rh.shell
+import rh.utils
 
 
 def get_parser():
@@ -52,8 +52,6 @@ def get_parser():
     parser.add_argument('files', nargs='*',
                         help='If specified, only consider differences in '
                              'these files.')
-    parser.add_argument('--verbose', action='store_true',
-                        help='Explain what is being done.')
     return parser
 
 
@@ -62,7 +60,7 @@ def main(argv):
     parser = get_parser()
     opts = parser.parse_args(argv)
 
-    format_path = which(opts.google_java_format)
+    format_path = shutil.which(opts.google_java_format)
     if not format_path:
         print(
             f'Unable to find google-java-format at: {opts.google_java_format}',
@@ -76,45 +74,18 @@ def main(argv):
     diff_cmd.extend(['--'] + opts.files)
     diff = rh.utils.run(diff_cmd, capture_output=True).stdout
 
-    format_cmd = [
-    	opts.google_java_format_diff,
-    	'-p1',
-    	'--aosp',
-    	'-b',
-    	format_path,
-    ]
+    cmd = [opts.google_java_format_diff, '-p1', '--aosp', '-b', format_path]
     if opts.fix:
-        format_cmd.extend(['-i'])
+        cmd.extend(['-i'])
     if not opts.sort_imports:
-        format_cmd.extend(['--skip-sorting-imports'])
+        cmd.extend(['--skip-sorting-imports'])
 
-    format_cmd_result = rh.utils.run(
-    	format_cmd, input=diff, capture_output=True)
-
-    if format_cmd_result.returncode != 0:
-        print("Failed due to non-zero exit code.")
-        if opts.verbose:
-            # print out the full command that was called, including pipes
-            print("Called:")
-            print(f"    {' '.join(diff_cmd)} |")
-            print(f"    {' '.join(format_cmd)}")
-        for line in format_cmd_result.stdout.splitlines():
-            print(f"[captured stdout]   {line}")
-        for line in format_cmd_result.stderr.splitlines():
-            print(f"[captured stderr]   {line}")
-        return format_cmd_result.returncode
-    if format_cmd_result.stdout:
+    stdout = rh.utils.run(cmd, input=diff, capture_output=True).stdout
+    if stdout:
         print('One or more files in your commit have Java formatting errors.')
         print(f'You can run: {sys.argv[0]} --fix {rh.shell.cmd_to_str(argv)}')
         return 1
-    if format_cmd_result.stderr:
-        # We need to use stderr to catch errors in google-java-format since we
-        # cannot listen for a non-zero error code until
-        # https://github.com/google/google-java-format/pull/848 is merged.
-        print("Errors have been captured in stderr.")
-        for line in format_cmd_result.stderr.splitlines():
-            print(f"[captured stderr]   {line}")
-        return 1
+
     return 0
 
 
