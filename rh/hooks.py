@@ -621,7 +621,7 @@ release notes, you need to include a starting and closing quote.
 Multi-line Relnote example:
 
 Relnote: "Added a new API `Class#getSize` to get the size of the class.
-This is useful if you need to know the size of the class."
+    This is useful if you need to know the size of the class."
 
 Single-line Relnote example:
 
@@ -1012,7 +1012,7 @@ def check_android_test_mapping(project, commit, _desc, diff, options=None):
 def check_aidl_format(project, commit, _desc, diff, options=None):
     """Checks that AIDL files are formatted with aidl-format."""
     # All *.aidl files except for those under aidl_api directory.
-    filtered = _filter_diff(diff, [r'\.aidl$'], [r'/aidl_api/'])
+    filtered = _filter_diff(diff, [r'\.aidl$'], [r'(^|/)aidl_api/'])
     if not filtered:
         return None
     aidl_format = options.tool_path('aidl-format')
