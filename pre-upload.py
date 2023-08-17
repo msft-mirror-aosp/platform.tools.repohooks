@@ -222,7 +222,7 @@ def _process_hook_results(results):
     error_ret = ''
     warning_ret = ''
     for result in results:
-        if result:
+        if result or result.is_warning():
             ret = ''
             if result.files:
                 ret += f'  FILES: {rh.shell.cmd_to_str(result.files)}\n'
