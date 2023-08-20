@@ -70,7 +70,7 @@ class HookCommandResult(HookResult):
 
     def __bool__(self):
         """Whether this result is an error."""
-        return self.result.returncode not in (None, 0)
+        return self.result.returncode not in (None, 0, 77)
 
     def is_warning(self):
         """Whether this result is a non-fatal warning."""
