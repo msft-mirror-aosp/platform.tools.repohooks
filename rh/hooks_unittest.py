@@ -33,6 +33,11 @@ import rh.config
 import rh.hooks
 
 
+# pylint: disable=unused-argument
+def mock_find_repo_root(path=None, outer=False):
+    return '/ ${BUILD_OS}' if outer else '/ ${BUILD_OS}/sub'
+
+
 class HooksDocsTests(unittest.TestCase):
     """Make sure all hook features are documented.
 
@@ -107,7 +112,8 @@ class PlaceholderTests(unittest.TestCase):
         self.assertGreater(len(ret), 4)
         self.assertIn('PREUPLOAD_COMMIT', ret)
 
-    @mock.patch.object(rh.git, 'find_repo_root', return_value='/ ${BUILD_OS}')
+    @mock.patch.object(rh.git, 'find_repo_root',
+                       side_effect=mock_find_repo_root)
     def testExpandVars(self, _m):
         """Verify the replacement actually works."""
         input_args = [
@@ -115,6 +121,8 @@ class PlaceholderTests(unittest.TestCase):
             # We also make sure that things in ${REPO_ROOT} are not double
             # expanded (which is why the return includes ${BUILD_OS}).
             '${REPO_ROOT}/some/prog/REPO_ROOT/ok',
+            # Verify that ${REPO_OUTER_ROOT} is expanded.
+            '${REPO_OUTER_ROOT}/some/prog/REPO_OUTER_ROOT/ok',
             # Verify lists are merged rather than inserted.
             '${PREUPLOAD_FILES}',
             # Verify each file is preceded with '--file=' prefix.
@@ -131,7 +139,8 @@ class PlaceholderTests(unittest.TestCase):
         ]
         output_args = self.replacer.expand_vars(input_args)
         exp_args = [
-            '/ ${BUILD_OS}/some/prog/REPO_ROOT/ok',
+            '/ ${BUILD_OS}/sub/some/prog/REPO_ROOT/ok',
+            '/ ${BUILD_OS}/some/prog/REPO_OUTER_ROOT/ok',
             'path1/file1',
             'path2/file2',
             '--file=path1/file1',
@@ -167,10 +176,19 @@ class PlaceholderTests(unittest.TestCase):
         self.assertEqual(self.replacer.get('PREUPLOAD_FILES'),
                          ['path1/file1', 'path2/file2'])
 
-    @mock.patch.object(rh.git, 'find_repo_root', return_value='/repo!')
+    @mock.patch.object(rh.git, 'find_repo_root')
+    def testREPO_OUTER_ROOT(self, m):
+        """Verify handling of REPO_OUTER_ROOT."""
+        m.side_effect=mock_find_repo_root
+        self.assertEqual(self.replacer.get('REPO_OUTER_ROOT'),
+                         mock_find_repo_root(path=None, outer=True))
+
+    @mock.patch.object(rh.git, 'find_repo_root')
     def testREPO_ROOT(self, m):
         """Verify handling of REPO_ROOT."""
-        self.assertEqual(self.replacer.get('REPO_ROOT'), m.return_value)
+        m.side_effect=mock_find_repo_root
+        self.assertEqual(self.replacer.get('REPO_ROOT'),
+                         mock_find_repo_root(path=None, outer=False))
 
     @mock.patch.object(rh.hooks, '_get_build_os_name', return_value='vapier os')
     def testBUILD_OS(self, m):
@@ -352,6 +370,8 @@ class BuiltinHooksTests(unittest.TestCase):
         ret = rh.hooks.check_bpfmt(
             self.project, 'commit', 'desc', diff, options=self.options)
         self.assertIsNotNone(ret)
+        for result in ret:
+            self.assertIsNotNone(result.fixup_func)
 
     def test_checkpatch(self, mock_check, _mock_run):
         """Verify the checkpatch builtin hook."""

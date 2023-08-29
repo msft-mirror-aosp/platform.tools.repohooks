@@ -129,9 +129,19 @@ class Placeholders(object):
         return [x.file for x in self.diff if x.status != 'D']
 
     @property
+    def var_REPO_PATH(self):
+        """The path to the project relative to the root"""
+        return os.environ.get('REPO_PATH', '')
+
+    @property
     def var_REPO_ROOT(self):
-        """The root of the repo checkout."""
+        """The root of the repo (sub-manifest) checkout."""
         return rh.git.find_repo_root()
+
+    @property
+    def var_REPO_OUTER_ROOT(self):
+        """The root of the repo (outer) checkout."""
+        return rh.git.find_repo_root(outer=True)
 
     @property
     def var_BUILD_OS(self):
@@ -347,15 +357,22 @@ def check_bpfmt(project, commit, _desc, diff, options=None):
         return None
 
     bpfmt = options.tool_path('bpfmt')
-    cmd = [bpfmt, '-l'] + options.args((), filtered)
+    bpfmt_options = options.args((), filtered)
+    cmd = [bpfmt, '-l'] + bpfmt_options
     ret = []
     for d in filtered:
         data = rh.git.get_file_content(commit, d.file)
         result = _run(cmd, input=data)
         if result.stdout:
+            fixup_cmd = [bpfmt, '-w']
+            if '-s' in bpfmt_options:
+                fixup_cmd.append('-s')
+            fixup_cmd.append(os.path.join(project.dir, d.file))
             ret.append(rh.results.HookResult(
-                'bpfmt', project, commit, error=result.stdout,
-                files=(d.file,)))
+                'bpfmt', project, commit,
+                error=result.stdout,
+                files=(d.file,),
+                fixup_func=_fixup_func_caller(fixup_cmd)))
     return ret
 
 
@@ -402,7 +419,7 @@ def check_ktfmt(project, commit, _desc, diff, options=None):
 
     include_dir_args = [x for x in options.args()
                         if x.startswith('--include-dirs=')]
-    include_dirs = [x.removeprefix('--include-dirs=').split(',')
+    include_dirs = [x[len('--include-dirs='):].split(',')
                     for x in include_dir_args]
     patterns = [fr'^{x}/.*\.kt$' for dir_list in include_dirs
                 for x in dir_list]
@@ -1018,13 +1035,17 @@ def check_aidl_format(project, commit, _desc, diff, options=None):
     if not filtered:
         return None
     aidl_format = options.tool_path('aidl-format')
-    cmd = [aidl_format, '-d'] + options.args((), filtered)
+    clang_format = options.tool_path('clang-format')
+    diff_cmd = [aidl_format, '-d', '--clang-format-path', clang_format] + \
+            options.args((), filtered)
     ret = []
     for d in filtered:
         data = rh.git.get_file_content(commit, d.file)
-        result = _run(cmd, input=data)
+        result = _run(diff_cmd, input=data)
         if result.stdout:
-            fixup_func = _fixup_func_caller([aidl_format, '-w', d.file])
+            fix_cmd = [aidl_format, '-w', '--clang-format-path', clang_format,
+                       d.file]
+            fixup_func = _fixup_func_caller(fix_cmd)
             ret.append(rh.results.HookResult(
                 'aidl-format', project, commit, error=result.stdout,
                 files=(d.file,), fixup_func=fixup_func))
