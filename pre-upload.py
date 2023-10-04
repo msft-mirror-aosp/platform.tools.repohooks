@@ -222,7 +222,7 @@ def _process_hook_results(results):
     error_ret = ''
     warning_ret = ''
     for result in results:
-        if result:
+        if result or result.is_warning():
             ret = ''
             if result.files:
                 ret += f'  FILES: {rh.shell.cmd_to_str(result.files)}\n'
@@ -264,46 +264,70 @@ def _get_project_config(from_git=False):
     return rh.config.PreUploadSettings(paths=paths, global_paths=global_paths)
 
 
-def _attempt_fixes(project_results, commit_list):
+def _attempt_fixes(projects_results: List[rh.results.ProjectResults]) -> None:
     """Attempts to fix fixable results."""
-    cwd = project_results.workdir
-    fixup_list = [(x.hook, x.commit, x.fixup_cmd, x.files)
-                  for x in project_results.fixups]
-    if len(fixup_list) != 1:
-        # Only single fixes will be attempted, since various fixes might
-        # interact with each other.
+    # Filter out any result that has a fixup.
+    fixups = []
+    for project_results in projects_results:
+        fixups.extend((project_results.workdir, x)
+                      for x in project_results.fixups)
+    if not fixups:
         return
 
-    hook_name, commit, fixup_cmd, fixup_files = fixup_list[0]
-
-    if commit != commit_list[0]:
-        # If the commit is not at the top of the stack, git operations might be
-        # needed and might leave the working directory in a tricky state if the
-        # fix is attempted to run automatically (e.g. it might require manual
-        # merge conflict resolution). Refuse to run the fix in those cases.
-        return
-
-    prompt = (f'An automatic fix can be attempted for the "{hook_name}" hook. '
-              'Do you want to run it?')
-    if not rh.terminal.boolean_prompt(prompt):
-        return
-
-    result = rh.utils.run(
-        fixup_cmd + list(fixup_files),
-        cwd=cwd,
-        combine_stdout_stderr=True,
-        capture_output=True,
-        check=False,
-        input='',
-    )
-    if result.returncode:
-        print(f'Attempt to fix "{hook_name}" for commit "{commit}" failed: '
-              f'{result.stdout}',
-              file=sys.stderr)
+    if len(fixups) > 1:
+        banner = f'Multiple fixups ({len(fixups)}) are available.'
     else:
-        print('Fix successfully applied. Amend the current commit before '
-              'attempting to upload again.\n', file=sys.stderr)
+        banner = 'Automated fixups are available.'
+    print(Output.COLOR.color(Output.COLOR.MAGENTA, banner), file=sys.stderr)
 
+    # If there's more than one fixup available, ask if they want to blindly run
+    # them all, or prompt for them one-by-one.
+    mode = 'some'
+    if len(fixups) > 1:
+        while True:
+            response = rh.terminal.str_prompt(
+                'What would you like to do',
+                ('Run (A)ll', 'Run (S)ome', '(D)ry-run', '(N)othing [default]'))
+            if not response:
+                print('', file=sys.stderr)
+                return
+            if response.startswith('a') or response.startswith('y'):
+                mode = 'all'
+                break
+            elif response.startswith('s'):
+                mode = 'some'
+                break
+            elif response.startswith('d'):
+                mode = 'dry-run'
+                break
+            elif response.startswith('n'):
+                print('', file=sys.stderr)
+                return
+
+    # Walk all the fixups and run them one-by-one.
+    for workdir, result in fixups:
+        if mode == 'some':
+            if not rh.terminal.boolean_prompt(
+                f'Run {result.hook} fixup for {result.commit}'
+            ):
+                continue
+
+        cmd = tuple(result.fixup_cmd) + tuple(result.files)
+        print(
+            f'\n[{Output.RUNNING}] cd {rh.shell.quote(workdir)} && '
+            f'{rh.shell.cmd_to_str(cmd)}', file=sys.stderr)
+        if mode == 'dry-run':
+            continue
+
+        cmd_result = rh.utils.run(cmd, cwd=workdir, check=False)
+        if cmd_result.returncode:
+            print(f'[{Output.WARNING}] command exited {cmd_result.returncode}',
+                  file=sys.stderr)
+        else:
+            print(f'[{Output.PASSED}] great success', file=sys.stderr)
+
+    print(f'\n[{Output.FIXUP}] Please amend & rebase your tree before '
+          'attempting to upload again.\n', file=sys.stderr)
 
 def _run_project_hooks_in_cwd(
     project_name: str,
@@ -335,8 +359,7 @@ def _run_project_hooks_in_cwd(
         config = _get_project_config(from_git)
     except rh.config.ValidationError as e:
         output.error('Loading config files', str(e))
-        ret.internal_failure = True
-        return ret
+        return ret._replace(internal_failure=True)
 
     # If the repo has no pre-upload hooks enabled, then just return.
     hooks = list(config.callable_hooks())
@@ -350,8 +373,7 @@ def _run_project_hooks_in_cwd(
     except rh.utils.CalledProcessError as e:
         output.error('Upstream remote/tracking branch lookup',
                      f'{e}\nDid you run repo start?  Is your HEAD detached?')
-        ret.internal_failure = True
-        return ret
+        return ret._replace(internal_failure=True)
 
     project = rh.Project(name=project_name, dir=proj_dir)
     rel_proj_dir = os.path.relpath(proj_dir, rh.git.find_repo_root())
@@ -409,8 +431,6 @@ def _run_project_hooks_in_cwd(
                         output.hook_error(hook, error)
                         output.hook_fixups(ret, hook_results)
                 output.hook_finish(hook, duration)
-
-    _attempt_fixes(ret, commit_list)
 
     return ret
 
@@ -505,6 +525,8 @@ def _run_projects_hooks(
             # output.  If there were no failures, then the output should be
             # very minimal, so we don't add it then.
             print('', file=sys.stderr)
+
+    _attempt_fixes(results)
     return not any(results)
 
 
