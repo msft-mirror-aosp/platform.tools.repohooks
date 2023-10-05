@@ -14,13 +14,13 @@
 
 """Functions that implement the actual checks."""
 
-import collections
 import fnmatch
 import json
 import os
 import platform
 import re
 import sys
+from typing import Callable, NamedTuple
 
 _path = os.path.realpath(__file__ + '/../..')
 if sys.path[0] != _path:
@@ -127,6 +127,11 @@ class Placeholders(object):
     def var_PREUPLOAD_FILES(self):
         """List of files modified in this git commit."""
         return [x.file for x in self.diff if x.status != 'D']
+
+    @property
+    def var_REPO_PATH(self):
+        """The path to the project relative to the root"""
+        return os.environ.get('REPO_PATH', '')
 
     @property
     def var_REPO_ROOT(self):
@@ -238,8 +243,11 @@ class HookOptions(object):
         return self.expand_vars([tool_path])[0]
 
 
-# A callable hook.
-CallableHook = collections.namedtuple('CallableHook', ('name', 'hook', 'scope'))
+class CallableHook(NamedTuple):
+    """A callable hook."""
+    name: str
+    hook: Callable
+    scope: ExclusionScope
 
 
 def _run(cmd, **kwargs):
@@ -309,26 +317,11 @@ def _get_build_os_name():
     return 'linux-x86'
 
 
-def _fixup_func_caller(cmd, **kwargs):
-    """Wraps |cmd| around a callable automated fixup.
-
-    For hooks that support automatically fixing errors after running (e.g. code
-    formatters), this function provides a way to run |cmd| as the |fixup_func|
-    parameter in HookCommandResult.
-    """
-    def wrapper():
-        result = _run(cmd, **kwargs)
-        if result.returncode not in (None, 0):
-            return result.stdout
-        return None
-    return wrapper
-
-
-def _check_cmd(hook_name, project, commit, cmd, fixup_func=None, **kwargs):
+def _check_cmd(hook_name, project, commit, cmd, fixup_cmd=None, **kwargs):
     """Runs |cmd| and returns its result as a HookCommandResult."""
     return [rh.results.HookCommandResult(hook_name, project, commit,
                                          _run(cmd, **kwargs),
-                                         fixup_func=fixup_func)]
+                                         fixup_cmd=fixup_cmd)]
 
 
 # Where helper programs exist.
@@ -362,12 +355,11 @@ def check_bpfmt(project, commit, _desc, diff, options=None):
             fixup_cmd = [bpfmt, '-w']
             if '-s' in bpfmt_options:
                 fixup_cmd.append('-s')
-            fixup_cmd.append(os.path.join(project.dir, d.file))
             ret.append(rh.results.HookResult(
                 'bpfmt', project, commit,
                 error=result.stdout,
                 files=(d.file,),
-                fixup_func=_fixup_func_caller(fixup_cmd)))
+                fixup_cmd=fixup_cmd))
     return ret
 
 
@@ -389,9 +381,9 @@ def check_clang_format(project, commit, _desc, diff, options=None):
                   git_clang_format] +
                  options.args(('--style', 'file', '--commit', commit), diff))
     cmd = [tool] + tool_args
-    fixup_func = _fixup_func_caller([tool, '--fix'] + tool_args)
+    fixup_cmd = [tool, '--fix'] + tool_args
     return _check_cmd('clang-format', project, commit, cmd,
-                      fixup_func=fixup_func)
+                      fixup_cmd=fixup_cmd)
 
 
 def check_google_java_format(project, commit, _desc, _diff, options=None):
@@ -404,9 +396,9 @@ def check_google_java_format(project, commit, _desc, _diff, options=None):
                  '--google-java-format-diff', google_java_format_diff,
                  '--commit', commit] + options.args()
     cmd = [tool] + tool_args
-    fixup_func = _fixup_func_caller([tool, '--fix'] + tool_args)
+    fixup_cmd = [tool, '--fix'] + tool_args
     return _check_cmd('google-java-format', project, commit, cmd,
-                      fixup_func=fixup_func)
+                      fixup_cmd=fixup_cmd)
 
 
 def check_ktfmt(project, commit, _desc, diff, options=None):
@@ -433,15 +425,10 @@ def check_ktfmt(project, commit, _desc, diff, options=None):
         ('${PREUPLOAD_FILES}',), filtered)
     result = _run(cmd)
     if result.stdout:
-        paths = [os.path.join(project.dir, x.file) for x in filtered]
-        error = (
-            f'\nKotlin files need formatting.\n'
-            'To reformat the kotlin files in this commit:\n'
-            f'{ktfmt} {" ".join(paths)}'
-        )
-        fixup_func = _fixup_func_caller([ktfmt] + paths)
-        return [rh.results.HookResult('ktfmt', project, commit, error=error,
-                                      files=paths, fixup_func=fixup_func)]
+        fixup_cmd = [ktfmt] + args
+        return [rh.results.HookResult(
+            'ktfmt', project, commit, error='Formatting errors detected',
+            files=[x.file for x in filtered], fixup_cmd=fixup_cmd)]
     return None
 
 
@@ -634,7 +621,7 @@ release notes, you need to include a starting and closing quote.
 Multi-line Relnote example:
 
 Relnote: "Added a new API `Class#getSize` to get the size of the class.
-This is useful if you need to know the size of the class."
+    This is useful if you need to know the size of the class."
 
 Single-line Relnote example:
 
@@ -871,16 +858,17 @@ def check_gofmt(project, commit, _desc, diff, options=None):
         return None
 
     gofmt = options.tool_path('gofmt')
-    cmd = [gofmt, '-l'] + options.args((), filtered)
+    cmd = [gofmt, '-l'] + options.args()
+    fixup_cmd = [gofmt, '-w'] + options.args()
+
     ret = []
     for d in filtered:
         data = rh.git.get_file_content(commit, d.file)
         result = _run(cmd, input=data)
         if result.stdout:
-            fixup_func = _fixup_func_caller([gofmt, '-w', d.file])
             ret.append(rh.results.HookResult(
                 'gofmt', project, commit, error=result.stdout,
-                files=(d.file,), fixup_func=fixup_func))
+                files=(d.file,), fixup_cmd=fixup_cmd))
     return ret
 
 
@@ -956,11 +944,9 @@ def check_rustfmt(project, commit, _desc, diff, options=None):
         # TODO(b/164111102): rustfmt stable does not support --check on stdin.
         # If no error is reported, compare stdin with stdout.
         if data != result.stdout:
-            msg = ('To fix, please run: ' +
-                   rh.shell.cmd_to_str(cmd + [d.file]))
             ret.append(rh.results.HookResult(
-                'rustfmt', project, commit, error=msg,
-                files=(d.file,)))
+                'rustfmt', project, commit, error='Files not formatted',
+                files=(d.file,), fixup_cmd=cmd))
     return ret
 
 
@@ -1026,20 +1012,22 @@ def check_android_test_mapping(project, commit, _desc, diff, options=None):
 def check_aidl_format(project, commit, _desc, diff, options=None):
     """Checks that AIDL files are formatted with aidl-format."""
     # All *.aidl files except for those under aidl_api directory.
-    filtered = _filter_diff(diff, [r'\.aidl$'], [r'/aidl_api/'])
+    filtered = _filter_diff(diff, [r'\.aidl$'], [r'(^|/)aidl_api/'])
     if not filtered:
         return None
     aidl_format = options.tool_path('aidl-format')
-    cmd = [aidl_format, '-d'] + options.args((), filtered)
+    clang_format = options.tool_path('clang-format')
+    diff_cmd = [aidl_format, '-d', '--clang-format-path', clang_format] + \
+            options.args((), filtered)
     ret = []
     for d in filtered:
         data = rh.git.get_file_content(commit, d.file)
-        result = _run(cmd, input=data)
+        result = _run(diff_cmd, input=data)
         if result.stdout:
-            fixup_func = _fixup_func_caller([aidl_format, '-w', d.file])
+            fixup_cmd = [aidl_format, '-w', '--clang-format-path', clang_format]
             ret.append(rh.results.HookResult(
                 'aidl-format', project, commit, error=result.stdout,
-                files=(d.file,), fixup_func=fixup_func))
+                files=(d.file,), fixup_cmd=fixup_cmd))
     return ret
 
 
