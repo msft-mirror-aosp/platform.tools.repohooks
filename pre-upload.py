@@ -359,7 +359,8 @@ def _run_project_hooks_in_cwd(
         config = _get_project_config(from_git)
     except rh.config.ValidationError as e:
         output.error('Loading config files', str(e))
-        return ret._replace(internal_failure=True)
+        ret.internal_failure = True
+        return ret
 
     # If the repo has no pre-upload hooks enabled, then just return.
     hooks = list(config.callable_hooks())
@@ -373,7 +374,8 @@ def _run_project_hooks_in_cwd(
     except rh.utils.CalledProcessError as e:
         output.error('Upstream remote/tracking branch lookup',
                      f'{e}\nDid you run repo start?  Is your HEAD detached?')
-        return ret._replace(internal_failure=True)
+        ret.internal_failure = True
+        return ret
 
     project = rh.Project(name=project_name, dir=proj_dir)
     rel_proj_dir = os.path.relpath(proj_dir, rh.git.find_repo_root())
