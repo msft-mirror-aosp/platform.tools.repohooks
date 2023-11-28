@@ -34,9 +34,16 @@ persistent=yes
 # List of plugins (as comma separated values of python modules names) to load,
 # usually to register additional checkers.
 load-plugins=
+    pylint.extensions.bad_builtin,
+    pylint.extensions.check_elif,
+    pylint.extensions.docstyle,
+    pylint.extensions.emptystring,
+    pylint.extensions.overlapping_exceptions,
+    pylint.extensions.redefined_variable_type,
 
-# Use multiple processes to speed up Pylint.
-jobs=1
+# Use multiple processes to speed up Pylint.  A value of 0 autodetects available
+# processors.
+jobs=0
 
 # Allow loading of arbitrary C extensions. Extensions are imported into the
 # active Python interpreter and may run arbitrary code.
@@ -65,7 +72,8 @@ confidence=
 # Enable the message, report, category or checker with the given id(s). You can
 # either give multiple identifier separated by comma (,) or put this option
 # multiple time. See also the "--disable" option for examples.
-#enable=
+enable=
+
 
 # Disable the message, report, category or checker with the given id(s). You
 # can either give multiple identifiers separated by comma (,) or put this
@@ -77,15 +85,17 @@ confidence=
 # no Warning level messages displayed, use"--disable=all --enable=classes
 # --disable=W"
 # We leave many of the style warnings to judgement/peer review.
+# useless-object-inheritance: We disable this for Python 2 compatibility.
 disable=
     fixme,
     file-ignored,
     invalid-name,
     locally-disabled,
-    locally-enabled,
     missing-docstring,
-    no-self-use,
-    star-args,
+    no-else-break,
+    no-else-continue,
+    no-else-raise,
+    no-else-return,
     too-few-public-methods,
     too-many-arguments,
     too-many-branches,
@@ -95,6 +105,7 @@ disable=
     too-many-public-methods,
     too-many-return-statements,
     too-many-statements,
+    useless-object-inheritance,
 
 
 [REPORTS]
@@ -111,6 +122,9 @@ files-output=no
 
 # Tells whether to display a full report or only the messages
 reports=no
+
+# Activate the evaluation score.
+score=no
 
 # Python expression which should return a note less than 10 (10 is the highest
 # note). You have access to the variables errors warning, statement which
@@ -245,7 +259,7 @@ notes=FIXME,XXX,TODO
 [BASIC]
 
 # List of builtins function names that should not be used, separated by a comma
-bad-functions=map,filter,input
+bad-functions=map,filter
 
 # Good variable names which should always be accepted, separated by a comma
 good-names=i,j,k,ex,x,_

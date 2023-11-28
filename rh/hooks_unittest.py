@@ -1,5 +1,4 @@
-#!/usr/bin/python
-# -*- coding:utf-8 -*-
+#!/usr/bin/env python3
 # Copyright 2016 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,13 +15,10 @@
 
 """Unittests for the hooks module."""
 
-from __future__ import print_function
-
 import os
 import sys
 import unittest
-
-import mock
+from unittest import mock
 
 _path = os.path.realpath(__file__ + '/../..')
 if sys.path[0] != _path:
@@ -33,8 +29,13 @@ del _path
 # relative imports because this is an executable program, not a module.
 # pylint: disable=wrong-import-position
 import rh
-import rh.hooks
 import rh.config
+import rh.hooks
+
+
+# pylint: disable=unused-argument
+def mock_find_repo_root(path=None, outer=False):
+    return '/ ${BUILD_OS}' if outer else '/ ${BUILD_OS}/sub'
 
 
 class HooksDocsTests(unittest.TestCase):
@@ -52,38 +53,40 @@ class HooksDocsTests(unittest.TestCase):
         """Extract the |section| text out of the readme."""
         ret = []
         in_section = False
-        for line in open(self.readme):
-            if not in_section:
-                # Look for the section like "## [Tool Paths]".
-                if line.startswith('#') and line.lstrip('#').strip() == section:
-                    in_section = True
-            else:
-                # Once we hit the next section (higher or lower), break.
-                if line[0] == '#':
-                    break
-                ret.append(line)
+        with open(self.readme, encoding='utf-8') as fp:
+            for line in fp:
+                if not in_section:
+                    # Look for the section like "## [Tool Paths]".
+                    if (line.startswith('#') and
+                            line.lstrip('#').strip() == section):
+                        in_section = True
+                else:
+                    # Once we hit the next section (higher or lower), break.
+                    if line[0] == '#':
+                        break
+                    ret.append(line)
         return ''.join(ret)
 
     def testBuiltinHooks(self):
         """Verify builtin hooks are documented."""
         data = self._grab_section('[Builtin Hooks]')
         for hook in rh.hooks.BUILTIN_HOOKS:
-            self.assertIn('* `%s`:' % (hook,), data,
-                          msg='README.md missing docs for hook "%s"' % (hook,))
+            self.assertIn(f'* `{hook}`:', data,
+                          msg=f'README.md missing docs for hook "{hook}"')
 
     def testToolPaths(self):
         """Verify tools are documented."""
         data = self._grab_section('[Tool Paths]')
         for tool in rh.hooks.TOOL_PATHS:
-            self.assertIn('* `%s`:' % (tool,), data,
-                          msg='README.md missing docs for tool "%s"' % (tool,))
+            self.assertIn(f'* `{tool}`:', data,
+                          msg=f'README.md missing docs for tool "{tool}"')
 
     def testPlaceholders(self):
         """Verify placeholder replacement vars are documented."""
         data = self._grab_section('Placeholders')
         for var in rh.hooks.Placeholders.vars():
-            self.assertIn('* `${%s}`:' % (var,), data,
-                          msg='README.md missing docs for var "%s"' % (var,))
+            self.assertIn('* `${' + var + '}`:', data,
+                          msg=f'README.md missing docs for var "{var}"')
 
 
 class PlaceholderTests(unittest.TestCase):
@@ -95,7 +98,9 @@ class PlaceholderTests(unittest.TestCase):
             'PREUPLOAD_COMMIT_MESSAGE': 'commit message',
             'PREUPLOAD_COMMIT': '5c4c293174bb61f0f39035a71acd9084abfa743d',
         })
-        self.replacer = rh.hooks.Placeholders()
+        self.replacer = rh.hooks.Placeholders(
+            [rh.git.RawDiffEntry(file=x)
+             for x in ['path1/file1', 'path2/file2']])
 
     def tearDown(self):
         os.environ.clear()
@@ -107,7 +112,8 @@ class PlaceholderTests(unittest.TestCase):
         self.assertGreater(len(ret), 4)
         self.assertIn('PREUPLOAD_COMMIT', ret)
 
-    @mock.patch.object(rh.git, 'find_repo_root', return_value='/ ${BUILD_OS}')
+    @mock.patch.object(rh.git, 'find_repo_root',
+                       side_effect=mock_find_repo_root)
     def testExpandVars(self, _m):
         """Verify the replacement actually works."""
         input_args = [
@@ -115,9 +121,15 @@ class PlaceholderTests(unittest.TestCase):
             # We also make sure that things in ${REPO_ROOT} are not double
             # expanded (which is why the return includes ${BUILD_OS}).
             '${REPO_ROOT}/some/prog/REPO_ROOT/ok',
-            # Verify lists are merged rather than inserted.  In this case, the
-            # list is empty, but we'd hit an error still if we saw [] in args.
+            # Verify that ${REPO_OUTER_ROOT} is expanded.
+            '${REPO_OUTER_ROOT}/some/prog/REPO_OUTER_ROOT/ok',
+            # Verify lists are merged rather than inserted.
             '${PREUPLOAD_FILES}',
+            # Verify each file is preceded with '--file=' prefix.
+            '--file=${PREUPLOAD_FILES_PREFIXED}',
+            # Verify each file is preceded with '--file' argument.
+            '--file',
+            '${PREUPLOAD_FILES_PREFIXED}',
             # Verify values with whitespace don't expand into multiple args.
             '${PREUPLOAD_COMMIT_MESSAGE}',
             # Verify multiple values get replaced.
@@ -127,7 +139,16 @@ class PlaceholderTests(unittest.TestCase):
         ]
         output_args = self.replacer.expand_vars(input_args)
         exp_args = [
-            '/ ${BUILD_OS}/some/prog/REPO_ROOT/ok',
+            '/ ${BUILD_OS}/sub/some/prog/REPO_ROOT/ok',
+            '/ ${BUILD_OS}/some/prog/REPO_OUTER_ROOT/ok',
+            'path1/file1',
+            'path2/file2',
+            '--file=path1/file1',
+            '--file=path2/file2',
+            '--file',
+            'path1/file1',
+            '--file',
+            'path2/file2',
             'commit message',
             '5c4c293174bb61f0f39035a71acd9084abfa743d^commit message',
             '${THIS_VAR_IS_GOOD}',
@@ -137,8 +158,8 @@ class PlaceholderTests(unittest.TestCase):
     def testTheTester(self):
         """Make sure we have a test for every variable."""
         for var in self.replacer.vars():
-            self.assertIn('test%s' % (var,), dir(self),
-                          msg='Missing unittest for variable %s' % (var,))
+            self.assertIn(f'test{var}', dir(self),
+                          msg=f'Missing unittest for variable {var}')
 
     def testPREUPLOAD_COMMIT_MESSAGE(self):
         """Verify handling of PREUPLOAD_COMMIT_MESSAGE."""
@@ -152,17 +173,56 @@ class PlaceholderTests(unittest.TestCase):
 
     def testPREUPLOAD_FILES(self):
         """Verify handling of PREUPLOAD_FILES."""
-        self.assertEqual(self.replacer.get('PREUPLOAD_FILES'), [])
+        self.assertEqual(self.replacer.get('PREUPLOAD_FILES'),
+                         ['path1/file1', 'path2/file2'])
 
-    @mock.patch.object(rh.git, 'find_repo_root', return_value='/repo!')
+    @mock.patch.object(rh.git, 'find_repo_root')
+    def testREPO_OUTER_ROOT(self, m):
+        """Verify handling of REPO_OUTER_ROOT."""
+        m.side_effect = mock_find_repo_root
+        self.assertEqual(self.replacer.get('REPO_OUTER_ROOT'),
+                         mock_find_repo_root(path=None, outer=True))
+
+    @mock.patch.object(rh.git, 'find_repo_root')
     def testREPO_ROOT(self, m):
         """Verify handling of REPO_ROOT."""
-        self.assertEqual(self.replacer.get('REPO_ROOT'), m.return_value)
+        m.side_effect = mock_find_repo_root
+        self.assertEqual(self.replacer.get('REPO_ROOT'),
+                         mock_find_repo_root(path=None, outer=False))
+
+    def testREPO_PATH(self):
+        """Verify handling of REPO_PATH."""
+        os.environ['REPO_PATH'] = ''
+        self.assertEqual(self.replacer.get('REPO_PATH'), '')
+        os.environ['REPO_PATH'] = 'foo/bar'
+        self.assertEqual(self.replacer.get('REPO_PATH'), 'foo/bar')
 
     @mock.patch.object(rh.hooks, '_get_build_os_name', return_value='vapier os')
     def testBUILD_OS(self, m):
         """Verify handling of BUILD_OS."""
         self.assertEqual(self.replacer.get('BUILD_OS'), m.return_value)
+
+
+class ExclusionScopeTests(unittest.TestCase):
+    """Verify behavior of ExclusionScope class."""
+
+    def testEmpty(self):
+        """Verify the in operator for an empty scope."""
+        scope = rh.hooks.ExclusionScope([])
+        self.assertNotIn('external/*', scope)
+
+    def testGlob(self):
+        """Verify the in operator for a scope using wildcards."""
+        scope = rh.hooks.ExclusionScope(['vendor/*', 'external/*'])
+        self.assertIn('external/tools', scope)
+
+    def testRegex(self):
+        """Verify the in operator for a scope using regular expressions."""
+        scope = rh.hooks.ExclusionScope(['^vendor/(?!google)',
+                                         'external/*'])
+        self.assertIn('vendor/', scope)
+        self.assertNotIn('vendor/google/', scope)
+        self.assertIn('vendor/other/', scope)
 
 
 class HookOptionsTests(unittest.TestCase):
@@ -177,7 +237,7 @@ class HookOptionsTests(unittest.TestCase):
 
         # At least one replacement.  Most real testing is in PlaceholderTests.
         args = ['who', 'goes', 'there ?', '${BUILD_OS} is great']
-        exp_args = ['who', 'goes', 'there ?', '%s is great' % (m.return_value,)]
+        exp_args = ['who', 'goes', 'there ?', f'{m.return_value} is great']
         self.assertEqual(exp_args, rh.hooks.HookOptions.expand_vars(args))
 
     def testArgs(self):
@@ -211,10 +271,10 @@ class UtilsTests(unittest.TestCase):
     """Verify misc utility functions."""
 
     def testRunCommand(self):
-        """Check _run_command behavior."""
+        """Check _run behavior."""
         # Most testing is done against the utils.RunCommand already.
         # pylint: disable=protected-access
-        ret = rh.hooks._run_command(['true'])
+        ret = rh.hooks._run(['true'])
         self.assertEqual(ret.returncode, 0)
 
     def testBuildOs(self):
@@ -232,16 +292,29 @@ class UtilsTests(unittest.TestCase):
         self.assertTrue(isinstance(ret, str))
         self.assertNotEqual(ret, '')
 
+    def testSortedToolPaths(self):
+        """Check TOOL_PATHS is sorted."""
+        # This assumes dictionary key ordering matches insertion/definition
+        # order which Python 3.7+ has codified.
+        # https://docs.python.org/3.7/library/stdtypes.html#dict
+        self.assertEqual(list(rh.hooks.TOOL_PATHS), sorted(rh.hooks.TOOL_PATHS))
+
+    def testSortedBuiltinHooks(self):
+        """Check BUILTIN_HOOKS is sorted."""
+        # This assumes dictionary key ordering matches insertion/definition
+        # order which Python 3.7+ has codified.
+        # https://docs.python.org/3.7/library/stdtypes.html#dict
+        self.assertEqual(
+            list(rh.hooks.BUILTIN_HOOKS), sorted(rh.hooks.BUILTIN_HOOKS))
 
 
-@mock.patch.object(rh.utils, 'run_command')
+@mock.patch.object(rh.utils, 'run')
 @mock.patch.object(rh.hooks, '_check_cmd', return_value=['check_cmd'])
 class BuiltinHooksTests(unittest.TestCase):
     """Verify the builtin hooks."""
 
     def setUp(self):
-        self.project = rh.Project(name='project-name', dir='/.../repo/dir',
-                                  remote='remote')
+        self.project = rh.Project(name='project-name', dir='/.../repo/dir')
         self.options = rh.hooks.HookOptions('hook name', [], {})
 
     def _test_commit_messages(self, func, accept, msgs, files=None):
@@ -260,11 +333,11 @@ class BuiltinHooksTests(unittest.TestCase):
         for desc in msgs:
             ret = func(self.project, 'commit', desc, diff, options=self.options)
             if accept:
-                self.assertEqual(
-                    ret, None, msg='Should have accepted: {{{%s}}}' % (desc,))
+                self.assertFalse(
+                    bool(ret), msg='Should have accepted: {{{' + desc + '}}}')
             else:
-                self.assertNotEqual(
-                    ret, None, msg='Should have rejected: {{{%s}}}' % (desc,))
+                self.assertTrue(
+                    bool(ret), msg='Should have rejected: {{{' + desc + '}}}')
 
     def _test_file_filter(self, mock_check, func, files):
         """Helper for testing hooks that filter by files and run external tools.
@@ -276,7 +349,7 @@ class BuiltinHooksTests(unittest.TestCase):
         """
         # First call should do nothing as there are no files to check.
         ret = func(self.project, 'commit', 'desc', (), options=self.options)
-        self.assertEqual(ret, None)
+        self.assertIsNone(ret)
         self.assertFalse(mock_check.called)
 
         # Second call should include some checks.
@@ -287,8 +360,24 @@ class BuiltinHooksTests(unittest.TestCase):
     def testTheTester(self, _mock_check, _mock_run):
         """Make sure we have a test for every hook."""
         for hook in rh.hooks.BUILTIN_HOOKS:
-            self.assertIn('test_%s' % (hook,), dir(self),
-                          msg='Missing unittest for builtin hook %s' % (hook,))
+            self.assertIn(f'test_{hook}', dir(self),
+                          msg=f'Missing unittest for builtin hook {hook}')
+
+    def test_bpfmt(self, mock_check, _mock_run):
+        """Verify the bpfmt builtin hook."""
+        # First call should do nothing as there are no files to check.
+        ret = rh.hooks.check_bpfmt(
+            self.project, 'commit', 'desc', (), options=self.options)
+        self.assertIsNone(ret)
+        self.assertFalse(mock_check.called)
+
+        # Second call will have some results.
+        diff = [rh.git.RawDiffEntry(file='Android.bp')]
+        ret = rh.hooks.check_bpfmt(
+            self.project, 'commit', 'desc', diff, options=self.options)
+        self.assertIsNotNone(ret)
+        for result in ret:
+            self.assertIsNotNone(result.fixup_cmd)
 
     def test_checkpatch(self, mock_check, _mock_run):
         """Verify the checkpatch builtin hook."""
@@ -323,6 +412,8 @@ class BuiltinHooksTests(unittest.TestCase):
                 'subj',
                 'subj\n\nBUG=1234\n',
                 'subj\n\nBUG: 1234\n',
+                'subj\n\nBug: N/A\n',
+                'subj\n\nBug:\n',
             ))
 
     def test_commit_msg_changeid_field(self, _mock_check, _mock_run):
@@ -463,6 +554,239 @@ class BuiltinHooksTests(unittest.TestCase):
                 'subj\n\nTEST: I1234\n',
             ))
 
+    def test_commit_msg_relnote_field_format(self, _mock_check, _mock_run):
+        """Verify the commit_msg_relnote_field_format builtin hook."""
+        # Check some good messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_field_format,
+            True,
+            (
+                'subj',
+                'subj\n\nTest: i did done dood it\nBug: 1234',
+                'subj\n\nMore content\n\nTest: i did done dood it\nBug: 1234',
+                'subj\n\nRelnote: This is a release note\nBug: 1234',
+                'subj\n\nRelnote:This is a release note\nBug: 1234',
+                'subj\n\nRelnote: This is a release note.\nBug: 1234',
+                'subj\n\nRelnote: "This is a release note."\nBug: 1234',
+                'subj\n\nRelnote: "This is a \\"release note\\"."\n\nBug: 1234',
+                'subj\n\nRelnote: This is a release note.\nChange-Id: 1234',
+                'subj\n\nRelnote: This is a release note.\n\nChange-Id: 1234',
+                ('subj\n\nRelnote: "This is a release note."\n\n'
+                 'Change-Id: 1234'),
+                ('subj\n\nRelnote: This is a release note.\n\n'
+                 'It has more info, but it is not part of the release note'
+                 '\nChange-Id: 1234'),
+                ('subj\n\nRelnote: "This is a release note.\n'
+                 'It contains a correct second line."'),
+                ('subj\n\nRelnote:"This is a release note.\n'
+                 'It contains a correct second line."'),
+                ('subj\n\nRelnote: "This is a release note.\n'
+                 'It contains a correct second line.\n'
+                 'And even a third line."\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: "This is a release note.\n'
+                 'It contains a correct second line.\n'
+                 '\\"Quotes\\" are even used on the third line."\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: This is release note 1.\n'
+                 'Relnote: This is release note 2.\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: This is release note 1.\n'
+                 'Relnote: "This is release note 2, and it\n'
+                 'contains a correctly formatted third line."\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: "This is release note 1 with\n'
+                 'a correctly formatted second line."\n\n'
+                 'Relnote: "This is release note 2, and it\n'
+                 'contains a correctly formatted second line."\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: "This is a release note with\n'
+                 'a correctly formatted second line."\n\n'
+                 'Bug: 1234'
+                 'Here is some extra "quoted" content.'),
+                ('subj\n\nRelnote: """This is a release note.\n\n'
+                 'This relnote contains an empty line.\n'
+                 'Then a non-empty line.\n\n'
+                 'And another empty line."""\n\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: """This is a release note.\n\n'
+                 'This relnote contains an empty line.\n'
+                 'Then an acceptable "quoted" line.\n\n'
+                 'And another empty line."""\n\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: """This is a release note."""\n\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: """This is a release note.\n'
+                 'It has a second line."""\n\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: """This is a release note.\n'
+                 'It has a second line, but does not end here.\n'
+                 '"""\n\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: """This is a release note.\n'
+                 '"It" has a second line, but does not end here.\n'
+                 '"""\n\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: "This is a release note.\n'
+                 'It has a second line, but does not end here.\n'
+                 '"\n\n'
+                 'Bug: 1234'),
+            ))
+
+        # Check some bad messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_field_format,
+            False,
+            (
+                'subj\n\nReleaseNote: This is a release note.\n',
+                'subj\n\nRelnotes: This is a release note.\n',
+                'subj\n\nRel-note: This is a release note.\n',
+                'subj\n\nrelnoTes: This is a release note.\n',
+                'subj\n\nrel-Note: This is a release note.\n',
+                'subj\n\nRelnote: "This is a "release note"."\nBug: 1234',
+                'subj\n\nRelnote: This is a "release note".\nBug: 1234',
+                ('subj\n\nRelnote: This is a release note.\n'
+                 'It contains an incorrect second line.'),
+                ('subj\n\nRelnote: "This is a release note.\n'
+                 'It contains multiple lines.\n'
+                 'But it does not provide an ending quote.\n'),
+                ('subj\n\nRelnote: "This is a release note.\n'
+                 'It contains multiple lines but no closing quote.\n'
+                 'Test: my test "hello world"\n'),
+                ('subj\n\nRelnote: This is release note 1.\n'
+                 'Relnote: "This is release note 2, and it\n'
+                 'contains an incorrectly formatted third line.\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: This is release note 1 with\n'
+                 'an incorrectly formatted second line.\n\n'
+                 'Relnote: "This is release note 2, and it\n'
+                 'contains a correctly formatted second line."\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: "This is release note 1 with\n'
+                 'a correctly formatted second line."\n\n'
+                 'Relnote: This is release note 2, and it\n'
+                 'contains an incorrectly formatted second line.\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: "This is a release note.\n'
+                 'It contains a correct second line.\n'
+                 'But incorrect "quotes" on the third line."\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: """This is a release note.\n'
+                 'It has a second line, but no closing triple quote.\n\n'
+                 'Bug: 1234'),
+                ('subj\n\nRelnote: "This is a release note.\n'
+                 '"It" has a second line, but does not end here.\n'
+                 '"\n\n'
+                 'Bug: 1234'),
+            ))
+
+    def test_commit_msg_relnote_for_current_txt(self, _mock_check, _mock_run):
+        """Verify the commit_msg_relnote_for_current_txt builtin hook."""
+        diff_without_current_txt = ['bar/foo.txt',
+                                    'foo.cpp',
+                                    'foo.java',
+                                    'foo_current.java',
+                                    'foo_current.txt',
+                                    'baz/current.java',
+                                    'baz/foo_current.txt']
+        diff_with_current_txt = diff_without_current_txt + ['current.txt']
+        diff_with_subdir_current_txt = \
+            diff_without_current_txt + ['foo/current.txt']
+        diff_with_experimental_current_txt = \
+            diff_without_current_txt + ['public_plus_experimental_current.txt']
+        # Check some good messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_for_current_txt,
+            True,
+            (
+                'subj\n\nRelnote: This is a release note\n',
+                'subj\n\nRelnote: This is a release note.\n\nChange-Id: 1234',
+                ('subj\n\nRelnote: This is release note 1 with\n'
+                 'an incorrectly formatted second line.\n\n'
+                 'Relnote: "This is release note 2, and it\n'
+                 'contains a correctly formatted second line."\n'
+                 'Bug: 1234'),
+            ),
+            files=diff_with_current_txt,
+        )
+        # Check some good messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_for_current_txt,
+            True,
+            (
+                'subj\n\nRelnote: This is a release note\n',
+                'subj\n\nRelnote: This is a release note.\n\nChange-Id: 1234',
+                ('subj\n\nRelnote: This is release note 1 with\n'
+                 'an incorrectly formatted second line.\n\n'
+                 'Relnote: "This is release note 2, and it\n'
+                 'contains a correctly formatted second line."\n'
+                 'Bug: 1234'),
+            ),
+            files=diff_with_experimental_current_txt,
+        )
+        # Check some good messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_for_current_txt,
+            True,
+            (
+                'subj\n\nRelnote: This is a release note\n',
+                'subj\n\nRelnote: This is a release note.\n\nChange-Id: 1234',
+                ('subj\n\nRelnote: This is release note 1 with\n'
+                 'an incorrectly formatted second line.\n\n'
+                 'Relnote: "This is release note 2, and it\n'
+                 'contains a correctly formatted second line."\n'
+                 'Bug: 1234'),
+            ),
+            files=diff_with_subdir_current_txt,
+        )
+        # Check some good messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_for_current_txt,
+            True,
+            (
+                'subj',
+                'subj\nBug: 12345\nChange-Id: 1234',
+                'subj\n\nRelnote: This is a release note\n',
+                'subj\n\nRelnote: This is a release note.\n\nChange-Id: 1234',
+                ('subj\n\nRelnote: This is release note 1 with\n'
+                 'an incorrectly formatted second line.\n\n'
+                 'Relnote: "This is release note 2, and it\n'
+                 'contains a correctly formatted second line."\n'
+                 'Bug: 1234'),
+            ),
+            files=diff_without_current_txt,
+        )
+        # Check some bad messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_for_current_txt,
+            False,
+            (
+                'subj'
+                'subj\nBug: 12345\nChange-Id: 1234',
+            ),
+            files=diff_with_current_txt,
+        )
+        # Check some bad messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_for_current_txt,
+            False,
+            (
+                'subj'
+                'subj\nBug: 12345\nChange-Id: 1234',
+            ),
+            files=diff_with_experimental_current_txt,
+        )
+        # Check some bad messages.
+        self._test_commit_messages(
+            rh.hooks.check_commit_msg_relnote_for_current_txt,
+            False,
+            (
+                'subj'
+                'subj\nBug: 12345\nChange-Id: 1234',
+            ),
+            files=diff_with_subdir_current_txt,
+        )
+
     def test_cpplint(self, mock_check, _mock_run):
         """Verify the cpplint builtin hook."""
         self._test_file_filter(mock_check, rh.hooks.check_cpplint,
@@ -473,29 +797,74 @@ class BuiltinHooksTests(unittest.TestCase):
         # First call should do nothing as there are no files to check.
         ret = rh.hooks.check_gofmt(
             self.project, 'commit', 'desc', (), options=self.options)
-        self.assertEqual(ret, None)
+        self.assertIsNone(ret)
         self.assertFalse(mock_check.called)
 
         # Second call will have some results.
         diff = [rh.git.RawDiffEntry(file='foo.go')]
         ret = rh.hooks.check_gofmt(
             self.project, 'commit', 'desc', diff, options=self.options)
-        self.assertNotEqual(ret, None)
+        self.assertIsNotNone(ret)
 
     def test_jsonlint(self, mock_check, _mock_run):
         """Verify the jsonlint builtin hook."""
         # First call should do nothing as there are no files to check.
         ret = rh.hooks.check_json(
             self.project, 'commit', 'desc', (), options=self.options)
-        self.assertEqual(ret, None)
+        self.assertIsNone(ret)
         self.assertFalse(mock_check.called)
 
         # TODO: Actually pass some valid/invalid json data down.
 
+    def test_ktfmt(self, mock_check, _mock_run):
+        """Verify the ktfmt builtin hook."""
+        # First call should do nothing as there are no files to check.
+        ret = rh.hooks.check_ktfmt(
+            self.project, 'commit', 'desc', (), options=self.options)
+        self.assertIsNone(ret)
+        self.assertFalse(mock_check.called)
+        # Check that .kt files are included by default.
+        diff = [rh.git.RawDiffEntry(file='foo.kt'),
+                rh.git.RawDiffEntry(file='bar.java'),
+                rh.git.RawDiffEntry(file='baz/blah.kt')]
+        ret = rh.hooks.check_ktfmt(
+            self.project, 'commit', 'desc', diff, options=self.options)
+        self.assertListEqual(ret[0].files, ['foo.kt', 'baz/blah.kt'])
+        diff = [rh.git.RawDiffEntry(file='foo/f1.kt'),
+                rh.git.RawDiffEntry(file='bar/f2.kt'),
+                rh.git.RawDiffEntry(file='baz/f2.kt')]
+        ret = rh.hooks.check_ktfmt(self.project, 'commit', 'desc', diff,
+                                   options=rh.hooks.HookOptions('hook name', [
+                                       '--include-dirs=foo,baz'], {}))
+        self.assertListEqual(ret[0].files, ['foo/f1.kt', 'baz/f2.kt'])
+
     def test_pylint(self, mock_check, _mock_run):
         """Verify the pylint builtin hook."""
-        self._test_file_filter(mock_check, rh.hooks.check_pylint,
+        self._test_file_filter(mock_check, rh.hooks.check_pylint2,
                                ('foo.py',))
+
+    def test_pylint2(self, mock_check, _mock_run):
+        """Verify the pylint2 builtin hook."""
+        self._test_file_filter(mock_check, rh.hooks.check_pylint2,
+                               ('foo.py',))
+
+    def test_pylint3(self, mock_check, _mock_run):
+        """Verify the pylint3 builtin hook."""
+        self._test_file_filter(mock_check, rh.hooks.check_pylint3,
+                               ('foo.py',))
+
+    def test_rustfmt(self, mock_check, _mock_run):
+        # First call should do nothing as there are no files to check.
+        ret = rh.hooks.check_rustfmt(
+            self.project, 'commit', 'desc', (), options=self.options)
+        self.assertEqual(ret, None)
+        self.assertFalse(mock_check.called)
+
+        # Second call will have some results.
+        diff = [rh.git.RawDiffEntry(file='lib.rs')]
+        ret = rh.hooks.check_rustfmt(
+            self.project, 'commit', 'desc', diff, options=self.options)
+        self.assertNotEqual(ret, None)
 
     def test_xmllint(self, mock_check, _mock_run):
         """Verify the xmllint builtin hook."""
@@ -513,6 +882,20 @@ class BuiltinHooksTests(unittest.TestCase):
         # Second call will have some results.
         diff = [rh.git.RawDiffEntry(file='TEST_MAPPING')]
         ret = rh.hooks.check_android_test_mapping(
+            self.project, 'commit', 'desc', diff, options=self.options)
+        self.assertIsNotNone(ret)
+
+    def test_aidl_format(self, mock_check, _mock_run):
+        """Verify the aidl_format builtin hook."""
+        # First call should do nothing as there are no files to check.
+        ret = rh.hooks.check_aidl_format(
+            self.project, 'commit', 'desc', (), options=self.options)
+        self.assertIsNone(ret)
+        self.assertFalse(mock_check.called)
+
+        # Second call will have some results.
+        diff = [rh.git.RawDiffEntry(file='IFoo.go')]
+        ret = rh.hooks.check_gofmt(
             self.project, 'commit', 'desc', diff, options=self.options)
         self.assertIsNotNone(ret)
 
