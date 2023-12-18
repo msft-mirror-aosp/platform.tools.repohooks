@@ -222,7 +222,7 @@ def _process_hook_results(results):
     error_ret = ''
     warning_ret = ''
     for result in results:
-        if result:
+        if result or result.is_warning():
             ret = ''
             if result.files:
                 ret += f'  FILES: {rh.shell.cmd_to_str(result.files)}\n'
@@ -282,7 +282,7 @@ def _attempt_fixes(projects_results: List[rh.results.ProjectResults]) -> None:
 
     # If there's more than one fixup available, ask if they want to blindly run
     # them all, or prompt for them one-by-one.
-    mode = None
+    mode = 'some'
     if len(fixups) > 1:
         while True:
             response = rh.terminal.str_prompt(
@@ -359,8 +359,7 @@ def _run_project_hooks_in_cwd(
         config = _get_project_config(from_git)
     except rh.config.ValidationError as e:
         output.error('Loading config files', str(e))
-        ret.internal_failure = True
-        return ret
+        return ret._replace(internal_failure=True)
 
     # If the repo has no pre-upload hooks enabled, then just return.
     hooks = list(config.callable_hooks())
@@ -374,8 +373,7 @@ def _run_project_hooks_in_cwd(
     except rh.utils.CalledProcessError as e:
         output.error('Upstream remote/tracking branch lookup',
                      f'{e}\nDid you run repo start?  Is your HEAD detached?')
-        ret.internal_failure = True
-        return ret
+        return ret._replace(internal_failure=True)
 
     project = rh.Project(name=project_name, dir=proj_dir)
     rel_proj_dir = os.path.relpath(proj_dir, rh.git.find_repo_root())
