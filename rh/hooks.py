@@ -346,17 +346,15 @@ def check_bpfmt(project, commit, _desc, diff, options=None):
 
     bpfmt = options.tool_path('bpfmt')
     bpfmt_options = options.args((), filtered)
-    cmd = [bpfmt, '-d'] + bpfmt_options
-    fixup_cmd = [bpfmt, '-w']
-    if '-s' in bpfmt_options:
-        fixup_cmd.append('-s')
-    fixup_cmd.append('--')
-
+    cmd = [bpfmt, '-l'] + bpfmt_options
     ret = []
     for d in filtered:
         data = rh.git.get_file_content(commit, d.file)
         result = _run(cmd, input=data)
         if result.stdout:
+            fixup_cmd = [bpfmt, '-w']
+            if '-s' in bpfmt_options:
+                fixup_cmd.append('-s')
             ret.append(rh.results.HookResult(
                 'bpfmt', project, commit,
                 error=result.stdout,
