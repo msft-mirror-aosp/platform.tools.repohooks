@@ -39,7 +39,7 @@ _SHELL_QUOTABLE_CHARS = frozenset('[|&;()<> \t!{}[]=*?~$"\'\\#^')
 _SHELL_ESCAPE_CHARS = r'\"`$'
 
 
-def quote(s):
+def shell_quote(s):
     """Quote |s| in a way that is safe for use in a shell.
 
     We aim to be safe, but also to produce "nice" output.  That means we don't
@@ -93,7 +93,7 @@ def quote(s):
     return f'"{s}"'
 
 
-def unquote(s):
+def shell_unquote(s):
     """Do the opposite of ShellQuote.
 
     This function assumes that the input is a valid escaped string.
@@ -148,7 +148,7 @@ def cmd_to_str(cmd):
       String representing full command.
     """
     # Use str before repr to translate unicode strings to regular strings.
-    return ' '.join(quote(arg) for arg in cmd)
+    return ' '.join(shell_quote(arg) for arg in cmd)
 
 
 def boolean_shell_value(sval, default):

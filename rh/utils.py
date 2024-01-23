@@ -81,27 +81,25 @@ class CalledProcessError(subprocess.CalledProcessError):
       returncode: The exit code of the process.
       cmd: The command that triggered this exception.
       msg: Short explanation of the error.
+      exception: The underlying Exception if available.
     """
 
-    def __init__(self, returncode, cmd, stdout=None, stderr=None, msg=None):
-        super().__init__(returncode, cmd, stdout, stderr=stderr)
+    def __init__(self, returncode, cmd, stdout=None, stderr=None, msg=None,
+                 exception=None):
+        if exception is not None and not isinstance(exception, Exception):
+            raise TypeError(
+                f'exception must be an exception instance; got {exception!r}')
 
-        # The parent class will set |output|, so delete it. If Python ever drops
-        # this output/stdout compat logic, we can drop this to match.
+        super().__init__(returncode, cmd, stdout)
+        # The parent class will set |output|, so delete it.
         del self.output
-        self._stdout = stdout
-
+        # TODO(vapier): When we're Python 3-only, delete this assignment as the
+        # parent handles it for us.
+        self.stdout = stdout
+        # TODO(vapier): When we're Python 3-only, move stderr to the init above.
+        self.stderr = stderr
         self.msg = msg
-
-    @property
-    def stdout(self):
-        """Override parent's usage of .output"""
-        return self._stdout
-
-    @stdout.setter
-    def stdout(self, value):
-        """Override parent's usage of .output"""
-        self._stdout = value
+        self.exception = exception
 
     @property
     def cmdstr(self):
@@ -250,7 +248,8 @@ class _Popen(subprocess.Popen):
 # pylint: disable=redefined-builtin
 def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
         shell=False, env=None, extra_env=None, combine_stdout_stderr=False,
-        check=True, int_timeout=1, kill_timeout=1, capture_output=False):
+        check=True, int_timeout=1, kill_timeout=1, capture_output=False,
+        close_fds=True):
     """Runs a command.
 
     Args:
@@ -276,6 +275,7 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
       kill_timeout: If we're interrupted, how long (in seconds) should we give
           the invoked process to shutdown from a SIGTERM before we SIGKILL it.
       capture_output: Set |redirect_stdout| and |redirect_stderr| to True.
+      close_fds: Whether to close all fds before running |cmd|.
 
     Returns:
       A CompletedProcess object.
@@ -364,32 +364,23 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
     try:
         proc = _Popen(cmd, cwd=cwd, stdin=stdin, stdout=popen_stdout,
                       stderr=popen_stderr, shell=False, env=env,
-                      close_fds=True)
+                      close_fds=close_fds)
 
         old_sigint = signal.getsignal(signal.SIGINT)
         handler = functools.partial(_kill_child_process, proc, int_timeout,
                                     kill_timeout, cmd, old_sigint)
-        # We have to ignore ValueError in case we're run from a thread.
-        try:
-            signal.signal(signal.SIGINT, handler)
-        except ValueError:
-            old_sigint = None
+        signal.signal(signal.SIGINT, handler)
 
         old_sigterm = signal.getsignal(signal.SIGTERM)
         handler = functools.partial(_kill_child_process, proc, int_timeout,
                                     kill_timeout, cmd, old_sigterm)
-        try:
-            signal.signal(signal.SIGTERM, handler)
-        except ValueError:
-            old_sigterm = None
+        signal.signal(signal.SIGTERM, handler)
 
         try:
             (result.stdout, result.stderr) = proc.communicate(input)
         finally:
-            if old_sigint is not None:
-                signal.signal(signal.SIGINT, old_sigint)
-            if old_sigterm is not None:
-                signal.signal(signal.SIGTERM, old_sigterm)
+            signal.signal(signal.SIGINT, old_sigint)
+            signal.signal(signal.SIGTERM, old_sigterm)
 
             if popen_stdout:
                 # The linter is confused by how stdout is a file & an int.
@@ -429,7 +420,7 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
             result = CompletedProcess(args=cmd, stderr=estr, returncode=255)
         else:
             raise CalledProcessError(
-                result.returncode, result.cmd, msg=estr,
+                result.returncode, result.cmd, msg=estr, exception=e,
                 stdout=ensure_text(result.stdout),
                 stderr=ensure_text(result.stderr)) from e
     finally:
