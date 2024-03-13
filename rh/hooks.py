@@ -14,13 +14,13 @@
 
 """Functions that implement the actual checks."""
 
-import collections
 import fnmatch
 import json
 import os
 import platform
 import re
 import sys
+from typing import Callable, NamedTuple
 
 _path = os.path.realpath(__file__ + '/../..')
 if sys.path[0] != _path:
@@ -83,7 +83,7 @@ class Placeholders(object):
             else:
                 # First scan for exact matches
                 for key, val in replacements.items():
-                    var = '${%s}' % (key,)
+                    var = '${' + key + '}'
                     if arg == var:
                         if isinstance(val, str):
                             ret.append(val)
@@ -98,7 +98,7 @@ class Placeholders(object):
                         if isinstance(val, str):
                             return val
                         return ' '.join(val)
-                    ret.append(re.sub(r'\$\{(%s)\}' % ('|'.join(all_vars),),
+                    ret.append(re.sub(r'\$\{(' + '|'.join(all_vars) + r')\}',
                                       replace, arg))
         return ret
 
@@ -111,7 +111,7 @@ class Placeholders(object):
 
     def get(self, var):
         """Helper function to get the replacement |var| value."""
-        return getattr(self, 'var_%s' % (var,))
+        return getattr(self, f'var_{var}')
 
     @property
     def var_PREUPLOAD_COMMIT_MESSAGE(self):
@@ -129,9 +129,19 @@ class Placeholders(object):
         return [x.file for x in self.diff if x.status != 'D']
 
     @property
+    def var_REPO_PATH(self):
+        """The path to the project relative to the root"""
+        return os.environ.get('REPO_PATH', '')
+
+    @property
     def var_REPO_ROOT(self):
-        """The root of the repo checkout."""
+        """The root of the repo (sub-manifest) checkout."""
         return rh.git.find_repo_root()
+
+    @property
+    def var_REPO_OUTER_ROOT(self):
+        """The root of the repo (outer) checkout."""
+        return rh.git.find_repo_root(outer=True)
 
     @property
     def var_BUILD_OS(self):
@@ -233,8 +243,11 @@ class HookOptions(object):
         return self.expand_vars([tool_path])[0]
 
 
-# A callable hook.
-CallableHook = collections.namedtuple('CallableHook', ('name', 'hook', 'scope'))
+class CallableHook(NamedTuple):
+    """A callable hook."""
+    name: str
+    hook: Callable
+    scope: ExclusionScope
 
 
 def _run(cmd, **kwargs):
@@ -304,26 +317,11 @@ def _get_build_os_name():
     return 'linux-x86'
 
 
-def _fixup_func_caller(cmd, **kwargs):
-    """Wraps |cmd| around a callable automated fixup.
-
-    For hooks that support automatically fixing errors after running (e.g. code
-    formatters), this function provides a way to run |cmd| as the |fixup_func|
-    parameter in HookCommandResult.
-    """
-    def wrapper():
-        result = _run(cmd, **kwargs)
-        if result.returncode not in (None, 0):
-            return result.stdout
-        return None
-    return wrapper
-
-
-def _check_cmd(hook_name, project, commit, cmd, fixup_func=None, **kwargs):
+def _check_cmd(hook_name, project, commit, cmd, fixup_cmd=None, **kwargs):
     """Runs |cmd| and returns its result as a HookCommandResult."""
     return [rh.results.HookCommandResult(hook_name, project, commit,
                                          _run(cmd, **kwargs),
-                                         fixup_func=fixup_func)]
+                                         fixup_cmd=fixup_cmd)]
 
 
 # Where helper programs exist.
@@ -347,15 +345,23 @@ def check_bpfmt(project, commit, _desc, diff, options=None):
         return None
 
     bpfmt = options.tool_path('bpfmt')
-    cmd = [bpfmt, '-l'] + options.args((), filtered)
+    bpfmt_options = options.args((), filtered)
+    cmd = [bpfmt, '-d'] + bpfmt_options
+    fixup_cmd = [bpfmt, '-w']
+    if '-s' in bpfmt_options:
+        fixup_cmd.append('-s')
+    fixup_cmd.append('--')
+
     ret = []
     for d in filtered:
         data = rh.git.get_file_content(commit, d.file)
         result = _run(cmd, input=data)
         if result.stdout:
             ret.append(rh.results.HookResult(
-                'bpfmt', project, commit, error=result.stdout,
-                files=(d.file,)))
+                'bpfmt', project, commit,
+                error=result.stdout,
+                files=(d.file,),
+                fixup_cmd=fixup_cmd))
     return ret
 
 
@@ -377,9 +383,9 @@ def check_clang_format(project, commit, _desc, diff, options=None):
                   git_clang_format] +
                  options.args(('--style', 'file', '--commit', commit), diff))
     cmd = [tool] + tool_args
-    fixup_func = _fixup_func_caller([tool, '--fix'] + tool_args)
+    fixup_cmd = [tool, '--fix'] + tool_args
     return _check_cmd('clang-format', project, commit, cmd,
-                      fixup_func=fixup_func)
+                      fixup_cmd=fixup_cmd)
 
 
 def check_google_java_format(project, commit, _desc, _diff, options=None):
@@ -392,19 +398,50 @@ def check_google_java_format(project, commit, _desc, _diff, options=None):
                  '--google-java-format-diff', google_java_format_diff,
                  '--commit', commit] + options.args()
     cmd = [tool] + tool_args
-    fixup_func = _fixup_func_caller([tool, '--fix'] + tool_args)
+    fixup_cmd = [tool, '--fix'] + tool_args
     return _check_cmd('google-java-format', project, commit, cmd,
-                      fixup_func=fixup_func)
+                      fixup_cmd=fixup_cmd)
+
+
+def check_ktfmt(project, commit, _desc, diff, options=None):
+    """Checks that kotlin files are formatted with ktfmt."""
+
+    include_dir_args = [x for x in options.args()
+                        if x.startswith('--include-dirs=')]
+    include_dirs = [x[len('--include-dirs='):].split(',')
+                    for x in include_dir_args]
+    patterns = [fr'^{x}/.*\.kt$' for dir_list in include_dirs
+                for x in dir_list]
+    if not patterns:
+        patterns = [r'\.kt$']
+
+    filtered = _filter_diff(diff, patterns)
+
+    if not filtered:
+        return None
+
+    args = [x for x in options.args() if x not in include_dir_args]
+
+    ktfmt = options.tool_path('ktfmt')
+    cmd = [ktfmt, '--dry-run'] + args + HookOptions.expand_vars(
+        ('${PREUPLOAD_FILES}',), filtered)
+    result = _run(cmd)
+    if result.stdout:
+        fixup_cmd = [ktfmt] + args
+        return [rh.results.HookResult(
+            'ktfmt', project, commit, error='Formatting errors detected',
+            files=[x.file for x in filtered], fixup_cmd=fixup_cmd)]
+    return None
 
 
 def check_commit_msg_bug_field(project, commit, desc, _diff, options=None):
     """Check the commit message for a 'Bug:' line."""
     field = 'Bug'
-    regex = r'^%s: (None|[0-9]+(, [0-9]+)*)$' % (field,)
+    regex = fr'^{field}: (None|[0-9]+(, [0-9]+)*)$'
     check_re = re.compile(regex)
 
     if options.args():
-        raise ValueError('commit msg %s check takes no options' % (field,))
+        raise ValueError(f'commit msg {field} check takes no options')
 
     found = []
     for line in desc.splitlines():
@@ -412,23 +449,25 @@ def check_commit_msg_bug_field(project, commit, desc, _diff, options=None):
             found.append(line)
 
     if not found:
-        error = ('Commit message is missing a "%s:" line.  It must match the\n'
-                 'following case-sensitive regex:\n\n    %s') % (field, regex)
+        error = (
+            f'Commit message is missing a "{field}:" line.  It must match the\n'
+            f'following case-sensitive regex:\n\n    {regex}'
+        )
     else:
         return None
 
-    return [rh.results.HookResult('commit msg: "%s:" check' % (field,),
+    return [rh.results.HookResult(f'commit msg: "{field}:" check',
                                   project, commit, error=error)]
 
 
 def check_commit_msg_changeid_field(project, commit, desc, _diff, options=None):
     """Check the commit message for a 'Change-Id:' line."""
     field = 'Change-Id'
-    regex = r'^%s: I[a-f0-9]+$' % (field,)
+    regex = fr'^{field}: I[a-f0-9]+$'
     check_re = re.compile(regex)
 
     if options.args():
-        raise ValueError('commit msg %s check takes no options' % (field,))
+        raise ValueError(f'commit msg {field} check takes no options')
 
     found = []
     for line in desc.splitlines():
@@ -436,15 +475,17 @@ def check_commit_msg_changeid_field(project, commit, desc, _diff, options=None):
             found.append(line)
 
     if not found:
-        error = ('Commit message is missing a "%s:" line.  It must match the\n'
-                 'following case-sensitive regex:\n\n    %s') % (field, regex)
+        error = (
+            f'Commit message is missing a "{field}:" line.  It must match the\n'
+            f'following case-sensitive regex:\n\n    {regex}'
+        )
     elif len(found) > 1:
-        error = ('Commit message has too many "%s:" lines.  There can be only '
-                 'one.') % (field,)
+        error = (f'Commit message has too many "{field}:" lines.  There can be '
+                 'only one.')
     else:
         return None
 
-    return [rh.results.HookResult('commit msg: "%s:" check' % (field,),
+    return [rh.results.HookResult(f'commit msg: "{field}:" check',
                                   project, commit, error=error)]
 
 
@@ -537,11 +578,11 @@ high-quality Test: descriptions.
 def check_commit_msg_test_field(project, commit, desc, _diff, options=None):
     """Check the commit message for a 'Test:' line."""
     field = 'Test'
-    regex = r'^%s: .*$' % (field,)
+    regex = fr'^{field}: .*$'
     check_re = re.compile(regex)
 
     if options.args():
-        raise ValueError('commit msg %s check takes no options' % (field,))
+        raise ValueError(f'commit msg {field} check takes no options')
 
     found = []
     for line in desc.splitlines():
@@ -553,7 +594,7 @@ def check_commit_msg_test_field(project, commit, desc, _diff, options=None):
     else:
         return None
 
-    return [rh.results.HookResult('commit msg: "%s:" check' % (field,),
+    return [rh.results.HookResult(f'commit msg: "{field}:" check',
                                   project, commit, error=error)]
 
 
@@ -582,7 +623,7 @@ release notes, you need to include a starting and closing quote.
 Multi-line Relnote example:
 
 Relnote: "Added a new API `Class#getSize` to get the size of the class.
-This is useful if you need to know the size of the class."
+    This is useful if you need to know the size of the class."
 
 Single-line Relnote example:
 
@@ -613,22 +654,23 @@ def check_commit_msg_relnote_field_format(project, commit, desc, _diff,
     quotes are escaped with a backslash.
     """
     field = 'Relnote'
-    regex_relnote = r'^%s:.*$' % (field,)
+    regex_relnote = fr'^{field}:.*$'
     check_re_relnote = re.compile(regex_relnote, re.IGNORECASE)
 
     if options.args():
-        raise ValueError('commit msg %s check takes no options' % (field,))
+        raise ValueError(f'commit msg {field} check takes no options')
 
     # Check 1: Check for possible misspellings of the `Relnote:` field.
 
     # Regex for misspelled fields.
-    possible_field_misspells = {'Relnotes', 'ReleaseNote',
-                                'Rel-note', 'Rel note',
-                                'rel-notes', 'releasenotes',
-                                'release-note', 'release-notes'}
-    regex_field_misspells = r'^(%s): .*$' % (
-        '|'.join(possible_field_misspells),
-    )
+    possible_field_misspells = {
+        'Relnotes', 'ReleaseNote',
+        'Rel-note', 'Rel note',
+        'rel-notes', 'releasenotes',
+        'release-note', 'release-notes',
+    }
+    re_possible_field_misspells = '|'.join(possible_field_misspells)
+    regex_field_misspells = fr'^({re_possible_field_misspells}): .*$'
     check_re_field_misspells = re.compile(regex_field_misspells, re.IGNORECASE)
 
     ret = []
@@ -636,9 +678,9 @@ def check_commit_msg_relnote_field_format(project, commit, desc, _diff,
         if check_re_field_misspells.match(line):
             error = RELNOTE_MISSPELL_MSG % (regex_relnote, )
             ret.append(
-                rh.results.HookResult(('commit msg: "%s:" '
-                                       'tag spelling error') % (field,),
-                                      project, commit, error=error))
+                rh.results.HookResult(
+                    f'commit msg: "{field}:" tag spelling error',
+                    project, commit, error=error))
 
     # Check 2: Check that multiline Relnotes are quoted.
 
@@ -661,10 +703,9 @@ def check_commit_msg_relnote_field_format(project, commit, desc, _diff,
             if (not check_re_other_fields.findall(next_line) and
                     not check_re_empty_string.match(next_line)):
                 ret.append(
-                    rh.results.HookResult(('commit msg: "%s:" '
-                                           'tag missing quotes') % (field,),
-                                          project, commit,
-                                          error=RELNOTE_MISSING_QUOTES_MSG))
+                    rh.results.HookResult(
+                        f'commit msg: "{field}:" tag missing quotes',
+                        project, commit, error=RELNOTE_MISSING_QUOTES_MSG))
                 break
 
     # Check 3: Check that multiline Relnotes contain matching quotes.
@@ -696,10 +737,9 @@ def check_commit_msg_relnote_field_format(project, commit, desc, _diff,
                 break
     if first_quote_found != second_quote_found:
         ret.append(
-            rh.results.HookResult(('commit msg: "%s:" '
-                                   'tag missing closing quote') % (field,),
-                                  project, commit,
-                                  error=RELNOTE_MISSING_QUOTES_MSG))
+            rh.results.HookResult(
+                f'commit msg: "{field}:" tag missing closing quote',
+                project, commit, error=RELNOTE_MISSING_QUOTES_MSG))
 
     # Check 4: Check that non-starting or non-ending quotes are escaped with a
     # backslash.
@@ -717,7 +757,7 @@ def check_commit_msg_relnote_field_format(project, commit, desc, _diff,
             if '"""' in cur_line:
                 break
         if line_needs_checking:
-            stripped_line = re.sub('^%s:' % field, '', cur_line,
+            stripped_line = re.sub(fr'^{field}:', '', cur_line,
                                    flags=re.IGNORECASE).strip()
             for i, character in enumerate(stripped_line):
                 if i == 0:
@@ -739,11 +779,9 @@ def check_commit_msg_relnote_field_format(project, commit, desc, _diff,
                     break
 
     if uses_invalid_quotes:
-        ret.append(rh.results.HookResult(('commit msg: "%s:" '
-                                          'tag using unescaped '
-                                          'quotes') % (field,),
-                                         project, commit,
-                                         error=RELNOTE_INVALID_QUOTES_MSG))
+        ret.append(rh.results.HookResult(
+            f'commit msg: "{field}:" tag using unescaped quotes',
+            project, commit, error=RELNOTE_INVALID_QUOTES_MSG))
     return ret
 
 
@@ -773,11 +811,11 @@ def check_commit_msg_relnote_for_current_txt(project, commit, desc, diff,
                                              options=None):
     """Check changes to current.txt contain the 'Relnote:' stanza."""
     field = 'Relnote'
-    regex = r'^%s: .+$' % (field,)
+    regex = fr'^{field}: .+$'
     check_re = re.compile(regex, re.IGNORECASE)
 
     if options.args():
-        raise ValueError('commit msg %s check takes no options' % (field,))
+        raise ValueError(f'commit msg {field} check takes no options')
 
     filtered = _filter_diff(
         diff,
@@ -798,7 +836,7 @@ def check_commit_msg_relnote_for_current_txt(project, commit, desc, diff,
     else:
         return None
 
-    return [rh.results.HookResult('commit msg: "%s:" check' % (field,),
+    return [rh.results.HookResult(f'commit msg: "{field}:" check',
                                   project, commit, error=error)]
 
 
@@ -822,16 +860,17 @@ def check_gofmt(project, commit, _desc, diff, options=None):
         return None
 
     gofmt = options.tool_path('gofmt')
-    cmd = [gofmt, '-l'] + options.args((), filtered)
+    cmd = [gofmt, '-l'] + options.args()
+    fixup_cmd = [gofmt, '-w'] + options.args()
+
     ret = []
     for d in filtered:
         data = rh.git.get_file_content(commit, d.file)
         result = _run(cmd, input=data)
         if result.stdout:
-            fixup_func = _fixup_func_caller([gofmt, '-w', d.file])
             ret.append(rh.results.HookResult(
                 'gofmt', project, commit, error=result.stdout,
-                files=(d.file,), fixup_func=fixup_func))
+                files=(d.file,), fixup_cmd=fixup_cmd))
     return ret
 
 
@@ -907,11 +946,9 @@ def check_rustfmt(project, commit, _desc, diff, options=None):
         # TODO(b/164111102): rustfmt stable does not support --check on stdin.
         # If no error is reported, compare stdin with stdout.
         if data != result.stdout:
-            msg = ('To fix, please run: %s' %
-                   rh.shell.cmd_to_str(cmd + [d.file]))
             ret.append(rh.results.HookResult(
-                'rustfmt', project, commit, error=msg,
-                files=(d.file,)))
+                'rustfmt', project, commit, error='Files not formatted',
+                files=(d.file,), fixup_cmd=cmd))
     return ret
 
 
@@ -948,7 +985,7 @@ def check_xmllint(project, commit, _desc, diff, options=None):
         'xsl',       # Extensible Stylesheet Language.
     ))
 
-    filtered = _filter_diff(diff, [r'\.(%s)$' % '|'.join(extensions)])
+    filtered = _filter_diff(diff, [r'\.(' + '|'.join(extensions) + r')$'])
     if not filtered:
         return None
 
@@ -977,20 +1014,22 @@ def check_android_test_mapping(project, commit, _desc, diff, options=None):
 def check_aidl_format(project, commit, _desc, diff, options=None):
     """Checks that AIDL files are formatted with aidl-format."""
     # All *.aidl files except for those under aidl_api directory.
-    filtered = _filter_diff(diff, [r'\.aidl$'], [r'/aidl_api/'])
+    filtered = _filter_diff(diff, [r'\.aidl$'], [r'(^|/)aidl_api/'])
     if not filtered:
         return None
     aidl_format = options.tool_path('aidl-format')
-    cmd = [aidl_format, '-d'] + options.args((), filtered)
+    clang_format = options.tool_path('clang-format')
+    diff_cmd = [aidl_format, '-d', '--clang-format-path', clang_format] + \
+            options.args((), filtered)
     ret = []
     for d in filtered:
         data = rh.git.get_file_content(commit, d.file)
-        result = _run(cmd, input=data)
+        result = _run(diff_cmd, input=data)
         if result.stdout:
-            fixup_func = _fixup_func_caller([aidl_format, '-w', d.file])
+            fixup_cmd = [aidl_format, '-w', '--clang-format-path', clang_format]
             ret.append(rh.results.HookResult(
                 'aidl-format', project, commit, error=result.stdout,
-                files=(d.file,), fixup_func=fixup_func))
+                files=(d.file,), fixup_cmd=fixup_cmd))
     return ret
 
 
@@ -1005,14 +1044,15 @@ BUILTIN_HOOKS = {
     'commit_msg_bug_field': check_commit_msg_bug_field,
     'commit_msg_changeid_field': check_commit_msg_changeid_field,
     'commit_msg_prebuilt_apk_fields': check_commit_msg_prebuilt_apk_fields,
-    'commit_msg_test_field': check_commit_msg_test_field,
     'commit_msg_relnote_field_format': check_commit_msg_relnote_field_format,
     'commit_msg_relnote_for_current_txt':
         check_commit_msg_relnote_for_current_txt,
+    'commit_msg_test_field': check_commit_msg_test_field,
     'cpplint': check_cpplint,
     'gofmt': check_gofmt,
     'google_java_format': check_google_java_format,
     'jsonlint': check_json,
+    'ktfmt': check_ktfmt,
     'pylint': check_pylint2,
     'pylint2': check_pylint2,
     'pylint3': check_pylint3,
@@ -1033,6 +1073,7 @@ TOOL_PATHS = {
     'gofmt': 'gofmt',
     'google-java-format': 'google-java-format',
     'google-java-format-diff': 'google-java-format-diff.py',
+    'ktfmt': 'ktfmt',
     'pylint': 'pylint',
     'rustfmt': 'rustfmt',
 }
