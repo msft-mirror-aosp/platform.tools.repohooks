@@ -1,4 +1,3 @@
-# -*- coding:utf-8 -*-
 # Copyright 2016 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,8 +13,6 @@
 # limitations under the License.
 
 """Various utility functions."""
-
-from __future__ import print_function
 
 import errno
 import functools
@@ -45,32 +42,23 @@ def timedelta_str(delta):
     total = delta.total_seconds()
     hours, rem = divmod(total, 3600)
     mins, secs = divmod(rem, 60)
-    ret = '%i.%03is' % (secs, delta.microseconds // 1000)
+    ret = f'{int(secs)}.{delta.microseconds // 1000:03}s'
     if mins:
-        ret = '%im%s' % (mins, ret)
+        ret = f'{int(mins)}m{ret}'
     if hours:
-        ret = '%ih%s' % (hours, ret)
+        ret = f'{int(hours)}h{ret}'
     return ret
 
 
-class CompletedProcess(getattr(subprocess, 'CompletedProcess', object)):
+class CompletedProcess(subprocess.CompletedProcess):
     """An object to store various attributes of a child process.
 
     This is akin to subprocess.CompletedProcess.
     """
 
-    # The linter is confused by the getattr usage above.
-    # TODO(vapier): Drop this once we're Python 3-only and we drop getattr.
-    # pylint: disable=bad-option-value,super-on-old-class
     def __init__(self, args=None, returncode=None, stdout=None, stderr=None):
-        if sys.version_info.major < 3:
-            self.args = args
-            self.stdout = stdout
-            self.stderr = stderr
-            self.returncode = returncode
-        else:
-            super(CompletedProcess, self).__init__(
-                args=args, returncode=returncode, stdout=stdout, stderr=stderr)
+        super().__init__(
+            args=args, returncode=returncode, stdout=stdout, stderr=stderr)
 
     @property
     def cmd(self):
@@ -93,25 +81,27 @@ class CalledProcessError(subprocess.CalledProcessError):
       returncode: The exit code of the process.
       cmd: The command that triggered this exception.
       msg: Short explanation of the error.
-      exception: The underlying Exception if available.
     """
 
-    def __init__(self, returncode, cmd, stdout=None, stderr=None, msg=None,
-                 exception=None):
-        if exception is not None and not isinstance(exception, Exception):
-            raise TypeError('exception must be an exception instance; got %r'
-                            % (exception,))
+    def __init__(self, returncode, cmd, stdout=None, stderr=None, msg=None):
+        super().__init__(returncode, cmd, stdout, stderr=stderr)
 
-        super(CalledProcessError, self).__init__(returncode, cmd, stdout)
-        # The parent class will set |output|, so delete it.
+        # The parent class will set |output|, so delete it. If Python ever drops
+        # this output/stdout compat logic, we can drop this to match.
         del self.output
-        # TODO(vapier): When we're Python 3-only, delete this assignment as the
-        # parent handles it for us.
-        self.stdout = stdout
-        # TODO(vapier): When we're Python 3-only, move stderr to the init above.
-        self.stderr = stderr
+        self._stdout = stdout
+
         self.msg = msg
-        self.exception = exception
+
+    @property
+    def stdout(self):
+        """Override parent's usage of .output"""
+        return self._stdout
+
+    @stdout.setter
+    def stdout(self, value):
+        """Override parent's usage of .output"""
+        self._stdout = value
 
     @property
     def cmdstr(self):
@@ -129,7 +119,7 @@ class CalledProcessError(subprocess.CalledProcessError):
           A summary string for this result.
         """
         items = [
-            'return code: %s; command: %s' % (self.returncode, self.cmdstr),
+            f'return code: {self.returncode}; command: {self.cmdstr}',
         ]
         if stderr and self.stderr:
             items.append(self.stderr)
@@ -183,20 +173,16 @@ def _kill_child_process(proc, int_timeout, kill_timeout, cmd, original_handler,
                 # Still doesn't want to die.  Too bad, so sad, time to die.
                 proc.kill()
         except EnvironmentError as e:
-            print('Ignoring unhandled exception in _kill_child_process: %s' % e,
+            print(f'Ignoring unhandled exception in _kill_child_process: {e}',
                   file=sys.stderr)
 
-        # Ensure our child process has been reaped.
-        kwargs = {}
-        if sys.version_info.major >= 3:
-            # ... but don't wait forever.
-            kwargs['timeout'] = 60
-        proc.wait_lock_breaker(**kwargs)
+        # Ensure our child process has been reaped, but don't wait forever.
+        proc.wait_lock_breaker(timeout=60)
 
     if not rh.signals.relay_signal(original_handler, signum, frame):
         # Mock up our own, matching exit code for signaling.
         raise TerminateCalledProcessError(
-            signum << 8, cmd, msg='Received signal %i' % signum)
+            signum << 8, cmd, msg=f'Received signal {signum}')
 
 
 class _Popen(subprocess.Popen):
@@ -212,7 +198,7 @@ class _Popen(subprocess.Popen):
     process has knowingly been waitpid'd already.
     """
 
-    # pylint: disable=arguments-differ
+    # pylint: disable=arguments-differ,arguments-renamed
     def send_signal(self, signum):
         if self.returncode is not None:
             # The original implementation in Popen allows signaling whatever
@@ -261,11 +247,10 @@ class _Popen(subprocess.Popen):
 
 
 # We use the keyword arg |input| which trips up pylint checks.
-# pylint: disable=redefined-builtin,input-builtin
+# pylint: disable=redefined-builtin
 def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
         shell=False, env=None, extra_env=None, combine_stdout_stderr=False,
-        check=True, int_timeout=1, kill_timeout=1, capture_output=False,
-        close_fds=True):
+        check=True, int_timeout=1, kill_timeout=1, capture_output=False):
     """Runs a command.
 
     Args:
@@ -291,7 +276,6 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
       kill_timeout: If we're interrupted, how long (in seconds) should we give
           the invoked process to shutdown from a SIGTERM before we SIGKILL it.
       capture_output: Set |redirect_stdout| and |redirect_stderr| to True.
-      close_fds: Whether to close all fds before running |cmd|.
 
     Returns:
       A CompletedProcess object.
@@ -313,13 +297,8 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
     kill_timeout = float(kill_timeout)
 
     def _get_tempfile():
-        kwargs = {}
-        if sys.version_info.major < 3:
-            kwargs['bufsize'] = 0
-        else:
-            kwargs['buffering'] = 0
         try:
-            return tempfile.TemporaryFile(**kwargs)
+            return tempfile.TemporaryFile(buffering=0)
         except EnvironmentError as e:
             if e.errno != errno.ENOENT:
                 raise
@@ -328,7 +307,7 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
             # issue in this particular case since our usage gurantees deletion,
             # and since this is primarily triggered during hard cgroups
             # shutdown.
-            return tempfile.TemporaryFile(dir='/tmp', **kwargs)
+            return tempfile.TemporaryFile(dir='/tmp', buffering=0)
 
     # Modify defaults based on parameters.
     # Note that tempfiles must be unbuffered else attempts to read
@@ -373,29 +352,44 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
     env = env.copy() if env is not None else os.environ.copy()
     env.update(extra_env if extra_env else {})
 
+    def ensure_text(s):
+        """Make sure |s| is a string if it's bytes."""
+        if isinstance(s, bytes):
+            s = s.decode('utf-8', 'replace')
+        return s
+
     result.args = cmd
 
     proc = None
     try:
         proc = _Popen(cmd, cwd=cwd, stdin=stdin, stdout=popen_stdout,
                       stderr=popen_stderr, shell=False, env=env,
-                      close_fds=close_fds)
+                      close_fds=True)
 
         old_sigint = signal.getsignal(signal.SIGINT)
         handler = functools.partial(_kill_child_process, proc, int_timeout,
                                     kill_timeout, cmd, old_sigint)
-        signal.signal(signal.SIGINT, handler)
+        # We have to ignore ValueError in case we're run from a thread.
+        try:
+            signal.signal(signal.SIGINT, handler)
+        except ValueError:
+            old_sigint = None
 
         old_sigterm = signal.getsignal(signal.SIGTERM)
         handler = functools.partial(_kill_child_process, proc, int_timeout,
                                     kill_timeout, cmd, old_sigterm)
-        signal.signal(signal.SIGTERM, handler)
+        try:
+            signal.signal(signal.SIGTERM, handler)
+        except ValueError:
+            old_sigterm = None
 
         try:
             (result.stdout, result.stderr) = proc.communicate(input)
         finally:
-            signal.signal(signal.SIGINT, old_sigint)
-            signal.signal(signal.SIGTERM, old_sigterm)
+            if old_sigint is not None:
+                signal.signal(signal.SIGINT, old_sigint)
+            if old_sigterm is not None:
+                signal.signal(signal.SIGTERM, old_sigterm)
 
             if popen_stdout:
                 # The linter is confused by how stdout is a file & an int.
@@ -414,23 +408,30 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
         result.returncode = proc.returncode
 
         if check and proc.returncode:
-            msg = 'cwd=%s' % cwd
+            msg = f'cwd={cwd}'
             if extra_env:
-                msg += ', extra env=%s' % extra_env
+                msg += f', extra env={extra_env}'
             raise CalledProcessError(
-                result.returncode, result.cmd, stdout=result.stdout,
-                stderr=result.stderr, msg=msg)
+                result.returncode, result.cmd, msg=msg,
+                stdout=ensure_text(result.stdout),
+                stderr=ensure_text(result.stderr))
     except OSError as e:
+        # Avoid leaking tempfiles.
+        if popen_stdout is not None and not isinstance(popen_stdout, int):
+            popen_stdout.close()
+        if popen_stderr is not None and not isinstance(popen_stderr, int):
+            popen_stderr.close()
+
         estr = str(e)
         if e.errno == errno.EACCES:
             estr += '; does the program need `chmod a+x`?'
         if not check:
-            result = CompletedProcess(
-                args=cmd, stderr=estr.encode('utf-8'), returncode=255)
+            result = CompletedProcess(args=cmd, stderr=estr, returncode=255)
         else:
             raise CalledProcessError(
-                result.returncode, result.cmd, stdout=result.stdout,
-                stderr=result.stderr, msg=estr, exception=e)
+                result.returncode, result.cmd, msg=estr,
+                stdout=ensure_text(result.stdout),
+                stderr=ensure_text(result.stderr)) from e
     finally:
         if proc is not None:
             # Ensure the process is dead.
@@ -440,10 +441,8 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
                                 None, None)
 
     # Make sure output is returned as a string rather than bytes.
-    if result.stdout is not None:
-        result.stdout = result.stdout.decode('utf-8', 'replace')
-    if result.stderr is not None:
-        result.stderr = result.stderr.decode('utf-8', 'replace')
+    result.stdout = ensure_text(result.stdout)
+    result.stderr = ensure_text(result.stderr)
 
     return result
-# pylint: enable=redefined-builtin,input-builtin
+# pylint: enable=redefined-builtin
