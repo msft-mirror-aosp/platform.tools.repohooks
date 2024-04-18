@@ -346,15 +346,17 @@ def check_bpfmt(project, commit, _desc, diff, options=None):
 
     bpfmt = options.tool_path('bpfmt')
     bpfmt_options = options.args((), filtered)
-    cmd = [bpfmt, '-l'] + bpfmt_options
+    cmd = [bpfmt, '-d'] + bpfmt_options
+    fixup_cmd = [bpfmt, '-w']
+    if '-s' in bpfmt_options:
+        fixup_cmd.append('-s')
+    fixup_cmd.append('--')
+
     ret = []
     for d in filtered:
         data = rh.git.get_file_content(commit, d.file)
         result = _run(cmd, input=data)
         if result.stdout:
-            fixup_cmd = [bpfmt, '-w']
-            if '-s' in bpfmt_options:
-                fixup_cmd.append('-s')
             ret.append(rh.results.HookResult(
                 'bpfmt', project, commit,
                 error=result.stdout,
@@ -621,7 +623,7 @@ release notes, you need to include a starting and closing quote.
 Multi-line Relnote example:
 
 Relnote: "Added a new API `Class#getSize` to get the size of the class.
-This is useful if you need to know the size of the class."
+    This is useful if you need to know the size of the class."
 
 Single-line Relnote example:
 
@@ -858,13 +860,14 @@ def check_gofmt(project, commit, _desc, diff, options=None):
         return None
 
     gofmt = options.tool_path('gofmt')
-    cmd = [gofmt, '-l'] + options.args((), filtered)
+    cmd = [gofmt, '-l'] + options.args()
+    fixup_cmd = [gofmt, '-w'] + options.args()
+
     ret = []
     for d in filtered:
         data = rh.git.get_file_content(commit, d.file)
         result = _run(cmd, input=data)
         if result.stdout:
-            fixup_cmd = [gofmt, '-w']
             ret.append(rh.results.HookResult(
                 'gofmt', project, commit, error=result.stdout,
                 files=(d.file,), fixup_cmd=fixup_cmd))
@@ -943,11 +946,9 @@ def check_rustfmt(project, commit, _desc, diff, options=None):
         # TODO(b/164111102): rustfmt stable does not support --check on stdin.
         # If no error is reported, compare stdin with stdout.
         if data != result.stdout:
-            msg = ('To fix, please run: ' +
-                   rh.shell.cmd_to_str(cmd + [d.file]))
             ret.append(rh.results.HookResult(
-                'rustfmt', project, commit, error=msg,
-                files=(d.file,)))
+                'rustfmt', project, commit, error='Files not formatted',
+                files=(d.file,), fixup_cmd=cmd))
     return ret
 
 
@@ -1013,7 +1014,7 @@ def check_android_test_mapping(project, commit, _desc, diff, options=None):
 def check_aidl_format(project, commit, _desc, diff, options=None):
     """Checks that AIDL files are formatted with aidl-format."""
     # All *.aidl files except for those under aidl_api directory.
-    filtered = _filter_diff(diff, [r'\.aidl$'], [r'/aidl_api/'])
+    filtered = _filter_diff(diff, [r'\.aidl$'], [r'(^|/)aidl_api/'])
     if not filtered:
         return None
     aidl_format = options.tool_path('aidl-format')
