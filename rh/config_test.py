@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding:utf-8 -*-
 # Copyright 2019 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,8 +15,6 @@
 
 """Integration tests for the config module (via PREUPLOAD.cfg)."""
 
-from __future__ import print_function
-
 import argparse
 import os
 import re
@@ -30,25 +27,25 @@ REPO_ROOT = os.path.dirname(os.path.dirname(REPOTOOLS))
 
 def assertEqual(msg, exp, actual):
     """Assert |exp| equals |actual|."""
-    assert exp == actual, '%s: expected "%s" but got "%s"' % (msg, exp, actual)
+    assert exp == actual, f'{msg}: expected "{exp}" but got "{actual}"'
 
 
 def assertEnv(var, value):
     """Assert |var| is set in the environment as |value|."""
-    assert var in os.environ, '$%s missing in environment' % (var,)
-    assertEqual('env[%s]' % (var,), value, os.environ[var])
+    assert var in os.environ, f'${var} missing in environment'
+    assertEqual(f'env[{var}]', value, os.environ[var])
 
 
 def check_commit_id(commit):
     """Check |commit| looks like a git commit id."""
-    assert len(commit) == 40, 'commit "%s" must be 40 chars' % (commit,)
+    assert len(commit) == 40, f'commit "{commit}" must be 40 chars'
     assert re.match(r'^[a-f0-9]+$', commit), \
-        'commit "%s" must be all hex' % (commit,)
+        f'commit "{commit}" must be all hex'
 
 
 def check_commit_msg(msg):
     """Check the ${PREUPLOAD_COMMIT_MESSAGE} setting."""
-    assert len(msg) > 1, 'commit message must be at least 2 bytes: %s'
+    assert len(msg) > 1, f'commit message must be at least 2 bytes: {msg}'
 
 
 def check_repo_root(root):
@@ -103,7 +100,7 @@ def main(argv):
             check_repo_root(opts.repo_root)
         check_files(opts.files)
     except AssertionError as e:
-        print('error: %s' % (e,), file=sys.stderr)
+        print(f'error: {e}', file=sys.stderr)
         return 1
 
     return 0

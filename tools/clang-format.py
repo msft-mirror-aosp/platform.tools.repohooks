@@ -1,5 +1,4 @@
-#!/usr/bin/python
-# -*- coding:utf-8 -*-
+#!/usr/bin/env python3
 # Copyright 2016 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,8 +15,6 @@
 
 """Wrapper to run git-clang-format and parse its output."""
 
-from __future__ import print_function
-
 import argparse
 import os
 import sys
@@ -29,7 +26,7 @@ del _path
 
 # We have to import our local modules after the sys.path tweak.  We can't use
 # relative imports because this is an executable program, not a module.
-# pylint: disable=wrong-import-position
+# pylint: disable=wrong-import-position,import-error
 import rh.shell
 import rh.utils
 
@@ -78,16 +75,39 @@ def main(argv):
     if opts.extensions:
         cmd.extend(['--extensions', opts.extensions])
     if not opts.working_tree:
-        cmd.extend(['%s^' % opts.commit, opts.commit])
+        cmd.extend([f'{opts.commit}^', opts.commit])
     cmd.extend(['--'] + opts.files)
 
     # Fail gracefully if clang-format itself aborts/fails.
-    try:
-        result = rh.utils.run(cmd, capture_output=True)
-    except rh.utils.CalledProcessError as e:
-        print('clang-format failed:\n%s' % (e,), file=sys.stderr)
-        print('\nPlease report this to the clang team.', file=sys.stderr)
-        return 1
+    result = rh.utils.run(cmd, capture_output=True, check=False)
+    # Newer versions of git-clang-format will exit 1 when it worked.  Assume a
+    # real failure is any exit code above 1, or any time stderr is used, or if
+    # it exited 1 and produce useful format diffs to stdout.  If it exited 0,
+    # then assume all is well and we'll attempt to parse its output below.
+    ret_code = None
+    if (result.returncode > 1 or result.stderr or
+        (result.stdout and result.returncode)):
+        # Apply fix if the flag is set and clang-format shows it is fixible.
+        if opts.fix and result.stdout and result.returncode:
+            result = rh.utils.run(['git', 'apply'], input=result.stdout,
+                                   check=False)
+            ret_code = result.returncode
+            if ret_code:
+                print('Error: Unable to automatically fix things.\n'
+                      '  Make sure your checkout is clean first.\n'
+                      '  If you have multiple commits, you might have to '
+                      'manually rebase your tree first.',
+                      file=sys.stderr)
+
+        else:  # Regular clang-format aborts/fails.
+            print(f'clang-format failed:\ncmd: {result.cmdstr}\n'
+                  f'stdout:\n{result.stdout}\n', file=sys.stderr)
+            if result.returncode > 1 or result.stderr:
+                print('\nPlease report this to the clang team.\n',
+                      f'stderr:\n{result.stderr}', file=sys.stderr)
+            ret_code = 1
+
+        return ret_code
 
     stdout = result.stdout
     if stdout.rstrip('\n') == 'no modified files to format':
@@ -113,9 +133,9 @@ def main(argv):
         else:
             print('The following files have formatting errors:')
             for filename in diff_filenames:
-                print('\t%s' % filename)
-            print('You can try to fix this by running:\n%s --fix %s' %
-                  (sys.argv[0], rh.shell.cmd_to_str(argv)))
+                print(f'\t{filename}')
+            print('You can try to fix this by running:\n'
+                  f'{sys.argv[0]} --fix {rh.shell.cmd_to_str(argv)}')
             return 1
 
     return 0
