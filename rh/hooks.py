@@ -434,13 +434,29 @@ def check_clang_format(project, commit, _desc, diff, options=None):
 
 def check_google_java_format(project, commit, _desc, _diff, options=None):
     """Run google-java-format on the commit."""
+    include_dir_args = [x for x in options.args()
+                        if x.startswith('--include-dirs=')]
+    include_dirs = [x[len('--include-dirs='):].split(',')
+                    for x in include_dir_args]
+    patterns = [fr'^{x}/.*\.java$' for dir_list in include_dirs
+                for x in dir_list]
+    if not patterns:
+        patterns = [r'\.java$']
+
+    filtered = _filter_diff(_diff, patterns)
+
+    if not filtered:
+        return None
+
+    args = [x for x in options.args() if x not in include_dir_args]
 
     tool = get_helper_path('google-java-format.py')
     google_java_format = options.tool_path('google-java-format')
     google_java_format_diff = options.tool_path('google-java-format-diff')
     tool_args = ['--google-java-format', google_java_format,
                  '--google-java-format-diff', google_java_format_diff,
-                 '--commit', commit] + options.args()
+                 '--commit', commit] + args + HookOptions.expand_vars(
+                   ('${PREUPLOAD_FILES}',), filtered)
 
     # Windows does not support running .py scripts directly
     # Note this assumes "python" is in the path
@@ -451,8 +467,9 @@ def check_google_java_format(project, commit, _desc, _diff, options=None):
 
     cmd = run_tool + tool_args
     fixup_func = _fixup_func_caller(run_tool + ['--fix'] + tool_args)
-    return _check_cmd('google-java-format', project, commit, cmd,
-                      fixup_func=fixup_func)
+    return [rh.results.HookCommandResult('google-java-format', project, commit,
+                                         _run(cmd),
+                                         fixup_func=fixup_func)]
 
 
 def check_commit_msg_buganizer_field(project, commit, desc, _diff, options=None):
