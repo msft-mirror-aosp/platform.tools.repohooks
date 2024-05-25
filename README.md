@@ -195,7 +195,9 @@ canned hooks already included geared towards AOSP style guidelines.
 * `cpplint`: Run through the cpplint tool (for C++ code).
 * `gofmt`: Run Go code through `gofmt`.
 * `google_java_format`: Run Java code through
-  [`google-java-format`](https://github.com/google/google-java-format)
+  [`google-java-format`](https://github.com/google/google-java-format).
+  Supports an additional option --include-dirs, which if specified will limit
+  enforcement to only files under the specified directories.
 * `jsonlint`: Verify JSON code is sane.
 * `ktfmt`: Run Kotlin code through `ktfmt`. Supports an additional option
   --include-dirs, which if specified will limit enforcement to only files under
