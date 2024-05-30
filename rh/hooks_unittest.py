@@ -353,9 +353,26 @@ class BuiltinHooksTests(unittest.TestCase):
 
     def test_google_java_format(self, mock_check, _mock_run):
         """Verify the google_java_format builtin hook."""
+        # First call should do nothing as there are no files to check.
         ret = rh.hooks.check_google_java_format(
             self.project, 'commit', 'desc', (), options=self.options)
-        self.assertEqual(ret, mock_check.return_value)
+        self.assertIsNone(ret)
+        self.assertFalse(mock_check.called)
+        # Check that .java files are included by default.
+        diff = [rh.git.RawDiffEntry(file='foo.java'),
+                rh.git.RawDiffEntry(file='bar.kt'),
+                rh.git.RawDiffEntry(file='baz/blah.java')]
+        ret = rh.hooks.check_google_java_format(
+            self.project, 'commit', 'desc', diff, options=self.options)
+        self.assertListEqual(ret[0].files, ['foo.java', 'baz/blah.java'])
+        diff = [rh.git.RawDiffEntry(file='foo/f1.java'),
+                rh.git.RawDiffEntry(file='bar/f2.java'),
+                rh.git.RawDiffEntry(file='baz/f2.java')]
+        ret = rh.hooks.check_google_java_format(
+            self.project, 'commit', 'desc', diff,
+            options=rh.hooks.HookOptions('hook name',
+            ['--include-dirs=foo,baz'], {}))
+        self.assertListEqual(ret[0].files, ['foo/f1.java', 'baz/f2.java'])
 
     def test_commit_msg_buganizer_field(self, _mock_check, _mock_run):
         """Verify the commit_msg_buganizer_field builtin hook."""
