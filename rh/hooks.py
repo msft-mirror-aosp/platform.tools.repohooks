@@ -134,6 +134,11 @@ class Placeholders(object):
         return os.environ.get('REPO_PATH', '')
 
     @property
+    def var_REPO_PROJECT(self):
+        """The name of the project"""
+        return os.environ.get('REPO_PROJECT', '')
+
+    @property
     def var_REPO_ROOT(self):
         """The root of the repo (sub-manifest) checkout."""
         return rh.git.find_repo_root()

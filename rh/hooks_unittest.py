@@ -197,6 +197,13 @@ class PlaceholderTests(unittest.TestCase):
         os.environ['REPO_PATH'] = 'foo/bar'
         self.assertEqual(self.replacer.get('REPO_PATH'), 'foo/bar')
 
+    def testREPO_PROJECT(self):
+        """Verify handling of REPO_PROJECT."""
+        os.environ['REPO_PROJECT'] = ''
+        self.assertEqual(self.replacer.get('REPO_PROJECT'), '')
+        os.environ['REPO_PROJECT'] = 'platform/foo/bar'
+        self.assertEqual(self.replacer.get('REPO_PROJECT'), 'platform/foo/bar')
+
     @mock.patch.object(rh.hooks, '_get_build_os_name', return_value='vapier os')
     def testBUILD_OS(self, m):
         """Verify handling of BUILD_OS."""
