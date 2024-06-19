@@ -44,6 +44,9 @@ def get_parser():
                         help='Fix any formatting errors automatically.')
     parser.add_argument('--commit', type=str, default='HEAD',
                         help='Specify the commit to validate.')
+    # TODO: b/344615661 — Remove argument when all usage has been updated
+    parser.add_argument('--sort-imports', action='store_true',
+                        help='Deprecated, do nothing')
     parser.add_argument('--skip-sorting-imports', action='store_true',
                         help='If true, imports will not be sorted.')
     parser.add_argument('files', nargs='*',
