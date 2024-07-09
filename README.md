@@ -205,7 +205,7 @@ canned hooks already included geared towards AOSP style guidelines.
 * `ktfmt`: Run Kotlin code through `ktfmt`. Supports an additional option
   --include-dirs, which if specified will limit enforcement to only files under
   the specified directories.
-* `pylint`: Alias of `pylint2`.  Will change to `pylint3` by end of 2019.
+* `pylint`: Alias of `pylint3`.
 * `pylint2`: Run Python code through `pylint` using Python 2.
 * `pylint3`: Run Python code through `pylint` using Python 3.
 * `rustfmt`: Run Rust code through `rustfmt`.
