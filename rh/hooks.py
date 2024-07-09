@@ -1076,7 +1076,7 @@ BUILTIN_HOOKS = {
     'google_java_format': check_google_java_format,
     'jsonlint': check_json,
     'ktfmt': check_ktfmt,
-    'pylint': check_pylint2,
+    'pylint': check_pylint3,
     'pylint2': check_pylint2,
     'pylint3': check_pylint3,
     'rustfmt': check_rustfmt,
