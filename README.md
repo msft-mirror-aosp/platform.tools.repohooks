@@ -319,7 +319,6 @@ without a bypass being required.
 
 # TODO/Limitations
 
-* `pylint` should support per-directory pylintrc files.
 * Some checkers operate on the files as they exist in the filesystem.  This is
   not easy to fix because the linters require not just the modified file but the
   entire repo in order to perform full checks.  e.g. `pylint` needs to know what
