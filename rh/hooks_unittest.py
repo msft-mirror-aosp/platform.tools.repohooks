@@ -179,16 +179,30 @@ class PlaceholderTests(unittest.TestCase):
     @mock.patch.object(rh.git, 'find_repo_root')
     def testREPO_OUTER_ROOT(self, m):
         """Verify handling of REPO_OUTER_ROOT."""
-        m.side_effect=mock_find_repo_root
+        m.side_effect = mock_find_repo_root
         self.assertEqual(self.replacer.get('REPO_OUTER_ROOT'),
                          mock_find_repo_root(path=None, outer=True))
 
     @mock.patch.object(rh.git, 'find_repo_root')
     def testREPO_ROOT(self, m):
         """Verify handling of REPO_ROOT."""
-        m.side_effect=mock_find_repo_root
+        m.side_effect = mock_find_repo_root
         self.assertEqual(self.replacer.get('REPO_ROOT'),
                          mock_find_repo_root(path=None, outer=False))
+
+    def testREPO_PATH(self):
+        """Verify handling of REPO_PATH."""
+        os.environ['REPO_PATH'] = ''
+        self.assertEqual(self.replacer.get('REPO_PATH'), '')
+        os.environ['REPO_PATH'] = 'foo/bar'
+        self.assertEqual(self.replacer.get('REPO_PATH'), 'foo/bar')
+
+    def testREPO_PROJECT(self):
+        """Verify handling of REPO_PROJECT."""
+        os.environ['REPO_PROJECT'] = ''
+        self.assertEqual(self.replacer.get('REPO_PROJECT'), '')
+        os.environ['REPO_PROJECT'] = 'platform/foo/bar'
+        self.assertEqual(self.replacer.get('REPO_PROJECT'), 'platform/foo/bar')
 
     @mock.patch.object(rh.hooks, '_get_build_os_name', return_value='vapier os')
     def testBUILD_OS(self, m):
@@ -307,8 +321,7 @@ class BuiltinHooksTests(unittest.TestCase):
     """Verify the builtin hooks."""
 
     def setUp(self):
-        self.project = rh.Project(name='project-name', dir='/.../repo/dir',
-                                  remote='remote')
+        self.project = rh.Project(name='project-name', dir='/.../repo/dir')
         self.options = rh.hooks.HookOptions('hook name', [], {})
 
     def _test_commit_messages(self, func, accept, msgs, files=None):
@@ -371,7 +384,7 @@ class BuiltinHooksTests(unittest.TestCase):
             self.project, 'commit', 'desc', diff, options=self.options)
         self.assertIsNotNone(ret)
         for result in ret:
-            self.assertIsNotNone(result.fixup_func)
+            self.assertIsNotNone(result.fixup_cmd)
 
     def test_checkpatch(self, mock_check, _mock_run):
         """Verify the checkpatch builtin hook."""
@@ -387,9 +400,26 @@ class BuiltinHooksTests(unittest.TestCase):
 
     def test_google_java_format(self, mock_check, _mock_run):
         """Verify the google_java_format builtin hook."""
+        # First call should do nothing as there are no files to check.
         ret = rh.hooks.check_google_java_format(
             self.project, 'commit', 'desc', (), options=self.options)
-        self.assertEqual(ret, mock_check.return_value)
+        self.assertIsNone(ret)
+        self.assertFalse(mock_check.called)
+        # Check that .java files are included by default.
+        diff = [rh.git.RawDiffEntry(file='foo.java'),
+                rh.git.RawDiffEntry(file='bar.kt'),
+                rh.git.RawDiffEntry(file='baz/blah.java')]
+        ret = rh.hooks.check_google_java_format(
+            self.project, 'commit', 'desc', diff, options=self.options)
+        self.assertListEqual(ret[0].files, ['foo.java', 'baz/blah.java'])
+        diff = [rh.git.RawDiffEntry(file='foo/f1.java'),
+                rh.git.RawDiffEntry(file='bar/f2.java'),
+                rh.git.RawDiffEntry(file='baz/f2.java')]
+        ret = rh.hooks.check_google_java_format(
+            self.project, 'commit', 'desc', diff,
+            options=rh.hooks.HookOptions('hook name',
+            ['--include-dirs=foo,baz'], {}))
+        self.assertListEqual(ret[0].files, ['foo/f1.java', 'baz/f2.java'])
 
     def test_commit_msg_bug_field(self, _mock_check, _mock_run):
         """Verify the commit_msg_bug_field builtin hook."""
@@ -823,16 +853,14 @@ class BuiltinHooksTests(unittest.TestCase):
                 rh.git.RawDiffEntry(file='baz/blah.kt')]
         ret = rh.hooks.check_ktfmt(
             self.project, 'commit', 'desc', diff, options=self.options)
-        self.assertListEqual(ret[0].files, ['/.../repo/dir/foo.kt',
-                                            '/.../repo/dir/baz/blah.kt'])
+        self.assertListEqual(ret[0].files, ['foo.kt', 'baz/blah.kt'])
         diff = [rh.git.RawDiffEntry(file='foo/f1.kt'),
                 rh.git.RawDiffEntry(file='bar/f2.kt'),
                 rh.git.RawDiffEntry(file='baz/f2.kt')]
         ret = rh.hooks.check_ktfmt(self.project, 'commit', 'desc', diff,
                                    options=rh.hooks.HookOptions('hook name', [
                                        '--include-dirs=foo,baz'], {}))
-        self.assertListEqual(ret[0].files, ['/.../repo/dir/foo/f1.kt',
-                                            '/.../repo/dir/baz/f2.kt'])
+        self.assertListEqual(ret[0].files, ['foo/f1.kt', 'baz/f2.kt'])
 
     def test_pylint(self, mock_check, _mock_run):
         """Verify the pylint builtin hook."""
