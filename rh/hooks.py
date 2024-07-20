@@ -134,6 +134,11 @@ class Placeholders(object):
         return os.environ.get('REPO_PATH', '')
 
     @property
+    def var_REPO_PROJECT(self):
+        """The name of the project"""
+        return os.environ.get('REPO_PROJECT', '')
+
+    @property
     def var_REPO_ROOT(self):
         """The root of the repo (sub-manifest) checkout."""
         return rh.git.find_repo_root()
@@ -1071,7 +1076,7 @@ BUILTIN_HOOKS = {
     'google_java_format': check_google_java_format,
     'jsonlint': check_json,
     'ktfmt': check_ktfmt,
-    'pylint': check_pylint2,
+    'pylint': check_pylint3,
     'pylint2': check_pylint2,
     'pylint3': check_pylint3,
     'rustfmt': check_rustfmt,
