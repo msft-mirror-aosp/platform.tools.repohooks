@@ -132,7 +132,7 @@ def find_parent_dirs_with_pylintrc(leafdir: str,
             break
 
         # Go up one directory.
-        key = os.path.join(key, os.pardir) + os.sep
+        key = os.path.abspath(os.path.join(key, os.pardir)) + os.sep
 
 
 def map_pyfiles_to_pylintrc(files: List[str]) -> Dict[str, Set[str]]:
