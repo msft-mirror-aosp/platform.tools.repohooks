@@ -179,23 +179,16 @@ class PlaceholderTests(unittest.TestCase):
     @mock.patch.object(rh.git, 'find_repo_root')
     def testREPO_OUTER_ROOT(self, m):
         """Verify handling of REPO_OUTER_ROOT."""
-        m.side_effect = mock_find_repo_root
+        m.side_effect=mock_find_repo_root
         self.assertEqual(self.replacer.get('REPO_OUTER_ROOT'),
                          mock_find_repo_root(path=None, outer=True))
 
     @mock.patch.object(rh.git, 'find_repo_root')
     def testREPO_ROOT(self, m):
         """Verify handling of REPO_ROOT."""
-        m.side_effect = mock_find_repo_root
+        m.side_effect=mock_find_repo_root
         self.assertEqual(self.replacer.get('REPO_ROOT'),
                          mock_find_repo_root(path=None, outer=False))
-
-    def testREPO_PATH(self):
-        """Verify handling of REPO_PATH."""
-        os.environ['REPO_PATH'] = ''
-        self.assertEqual(self.replacer.get('REPO_PATH'), '')
-        os.environ['REPO_PATH'] = 'foo/bar'
-        self.assertEqual(self.replacer.get('REPO_PATH'), 'foo/bar')
 
     @mock.patch.object(rh.hooks, '_get_build_os_name', return_value='vapier os')
     def testBUILD_OS(self, m):
@@ -314,7 +307,8 @@ class BuiltinHooksTests(unittest.TestCase):
     """Verify the builtin hooks."""
 
     def setUp(self):
-        self.project = rh.Project(name='project-name', dir='/.../repo/dir')
+        self.project = rh.Project(name='project-name', dir='/.../repo/dir',
+                                  remote='remote')
         self.options = rh.hooks.HookOptions('hook name', [], {})
 
     def _test_commit_messages(self, func, accept, msgs, files=None):
@@ -377,7 +371,7 @@ class BuiltinHooksTests(unittest.TestCase):
             self.project, 'commit', 'desc', diff, options=self.options)
         self.assertIsNotNone(ret)
         for result in ret:
-            self.assertIsNotNone(result.fixup_cmd)
+            self.assertIsNotNone(result.fixup_func)
 
     def test_checkpatch(self, mock_check, _mock_run):
         """Verify the checkpatch builtin hook."""
@@ -829,14 +823,16 @@ class BuiltinHooksTests(unittest.TestCase):
                 rh.git.RawDiffEntry(file='baz/blah.kt')]
         ret = rh.hooks.check_ktfmt(
             self.project, 'commit', 'desc', diff, options=self.options)
-        self.assertListEqual(ret[0].files, ['foo.kt', 'baz/blah.kt'])
+        self.assertListEqual(ret[0].files, ['/.../repo/dir/foo.kt',
+                                            '/.../repo/dir/baz/blah.kt'])
         diff = [rh.git.RawDiffEntry(file='foo/f1.kt'),
                 rh.git.RawDiffEntry(file='bar/f2.kt'),
                 rh.git.RawDiffEntry(file='baz/f2.kt')]
         ret = rh.hooks.check_ktfmt(self.project, 'commit', 'desc', diff,
                                    options=rh.hooks.HookOptions('hook name', [
                                        '--include-dirs=foo,baz'], {}))
-        self.assertListEqual(ret[0].files, ['foo/f1.kt', 'baz/f2.kt'])
+        self.assertListEqual(ret[0].files, ['/.../repo/dir/foo/f1.kt',
+                                            '/.../repo/dir/baz/f2.kt'])
 
     def test_pylint(self, mock_check, _mock_run):
         """Verify the pylint builtin hook."""

@@ -59,7 +59,7 @@ class DiffTestCase(unittest.TestCase):
 
 
 class ShellQuoteTest(DiffTestCase):
-    """Test the quote & unquote functions."""
+    """Test the shell_quote & shell_unquote functions."""
 
     def testShellQuote(self):
         """Basic ShellQuote tests."""
@@ -86,10 +86,10 @@ class ShellQuoteTest(DiffTestCase):
         }
 
         def aux(s):
-            return rh.shell.unquote(rh.shell.quote(s))
+            return rh.shell.shell_unquote(rh.shell.shell_quote(s))
 
-        self._testData(rh.shell.quote, tests_quote)
-        self._testData(rh.shell.unquote, tests_unquote)
+        self._testData(rh.shell.shell_quote, tests_quote)
+        self._testData(rh.shell.shell_unquote, tests_unquote)
 
         # Test that the operations are reversible.
         self._testData(aux, {k: k for k in tests_quote.values()}, False)
@@ -97,7 +97,7 @@ class ShellQuoteTest(DiffTestCase):
 
     def testPathlib(self):
         """Verify pathlib is handled."""
-        self.assertEqual(rh.shell.quote(Path('/')), '/')
+        self.assertEqual(rh.shell.shell_quote(Path('/')), '/')
 
     def testBadInputs(self):
         """Verify bad inputs do not crash."""
@@ -105,7 +105,7 @@ class ShellQuoteTest(DiffTestCase):
             (1234, '1234'),
             (Exception('hi'), "Exception('hi')"),
         ):
-            self.assertEqual(rh.shell.quote(arg), exp)
+            self.assertEqual(rh.shell.shell_quote(arg), exp)
 
 
 class CmdToStrTest(DiffTestCase):
