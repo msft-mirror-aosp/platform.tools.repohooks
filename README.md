@@ -114,6 +114,9 @@ Some variables are available to make it easier to handle OS differences.  These
 are automatically expanded for you:
 
 * `${REPO_PATH}`: The path to the project relative to the root.
+  e.g. `tools/repohooks`
+* `${REPO_PROJECT}`: The name of the project.
+  e.g. `platform/tools/repohooks`
 * `${REPO_ROOT}`: The absolute path of the root of the repo checkout.  If the
   project is in a submanifest, this points to the root of the submanifest.
 * `${REPO_OUTER_ROOT}`: The absolute path of the root of the repo checkout.
@@ -195,7 +198,9 @@ canned hooks already included geared towards AOSP style guidelines.
 * `cpplint`: Run through the cpplint tool (for C++ code).
 * `gofmt`: Run Go code through `gofmt`.
 * `google_java_format`: Run Java code through
-  [`google-java-format`](https://github.com/google/google-java-format)
+  [`google-java-format`](https://github.com/google/google-java-format).
+  Supports an additional option --include-dirs, which if specified will limit
+  enforcement to only files under the specified directories.
 * `jsonlint`: Verify JSON code is sane.
 * `ktfmt`: Run Kotlin code through `ktfmt`. Supports an additional option
   --include-dirs, which if specified will limit enforcement to only files under
