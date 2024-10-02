@@ -370,6 +370,27 @@ class BuiltinHooksTests(unittest.TestCase):
             self.assertIn(f'test_{hook}', dir(self),
                           msg=f'Missing unittest for builtin hook {hook}')
 
+    def test_aosp_license(self, mock_check, _mock_run):
+        """Verify the aosp_license builtin hook."""
+        # First call should do nothing as there are no files to check.
+        diff = [
+            rh.git.RawDiffEntry(file='d.bp', status='D'),
+            rh.git.RawDiffEntry(file='m.bp', status='M'),
+            rh.git.RawDiffEntry(file='non-interested', status='A'),
+        ]
+        ret = rh.hooks.check_aosp_license(
+            self.project, 'commit', 'desc', diff, options=self.options)
+        self.assertIsNone(ret)
+        self.assertFalse(mock_check.called)
+
+        # Second call will have some results.
+        diff = [
+            rh.git.RawDiffEntry(file='a.bp', status='A'),
+        ]
+        ret = rh.hooks.check_aosp_license(
+            self.project, 'commit', 'desc', diff, options=self.options)
+        self.assertIsNotNone(ret)
+
     def test_bpfmt(self, mock_check, _mock_run):
         """Verify the bpfmt builtin hook."""
         # First call should do nothing as there are no files to check.
