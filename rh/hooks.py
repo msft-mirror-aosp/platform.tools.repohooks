@@ -345,7 +345,12 @@ def check_custom(project, commit, _desc, diff, options=None, **kwargs):
 
 def check_aosp_license(project, commit, _desc, diff, options=None):
     """Checks that if all new added files has AOSP licenses"""
-    # TODO(b/370907797): Support option to exclude files with certain patterns.
+
+    exclude_dir_args = [x for x in options.args()
+                        if x.startswith('--exclude-dirs=')]
+    exclude_dirs = [x[len('--exclude-dirs='):].split(',')
+                    for x in exclude_dir_args]
+    exclude_list = [fr'^{x}/.*$' for dir_list in exclude_dirs for x in dir_list]
 
     # Filter diff based on extension.
     include_list = [
@@ -364,7 +369,7 @@ def check_aosp_license(project, commit, _desc, diff, options=None):
         r".*\.bp$",
         r".*\.xml$",
     ]
-    diff = _filter_diff(diff, include_list)
+    diff = _filter_diff(diff, include_list, exclude_list)
 
     # Only check the new-added files.
     diff = [d for d in diff if d.status == 'A']
@@ -373,7 +378,7 @@ def check_aosp_license(project, commit, _desc, diff, options=None):
         return None
 
     cmd = [get_helper_path('check_aosp_license.py'), '--commit_hash', commit]
-    cmd += options.args(('${PREUPLOAD_FILES}',), diff)
+    cmd += HookOptions.expand_vars(('${PREUPLOAD_FILES}',), diff)
     return _check_cmd('aosp_license', project, commit, cmd)
 
 
