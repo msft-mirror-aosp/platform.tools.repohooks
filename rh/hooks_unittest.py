@@ -391,6 +391,30 @@ class BuiltinHooksTests(unittest.TestCase):
             self.project, 'commit', 'desc', diff, options=self.options)
         self.assertIsNotNone(ret)
 
+        # No result since all paths are excluded.
+        diff = [
+            rh.git.RawDiffEntry(file='a/a.bp', status='A'),
+            rh.git.RawDiffEntry(file='b/a.bp', status='A'),
+            rh.git.RawDiffEntry(file='c/d/a.bp', status='A'),
+        ]
+        ret = rh.hooks.check_aosp_license(
+            self.project, 'commit', 'desc', diff,
+            options=rh.hooks.HookOptions('hook name',
+                ['--exclude-dirs=a,b', '--exclude-dirs=c/d'], {})
+        )
+        self.assertIsNone(ret)
+
+        # Make sure that `--exclude-dir` doesn't match the path in the middle.
+        diff = [
+            rh.git.RawDiffEntry(file='a/b/c.bp', status='A'),
+        ]
+        ret = rh.hooks.check_aosp_license(
+            self.project, 'commit', 'desc', diff,
+            options=rh.hooks.HookOptions('hook name', ['--exclude-dirs=b'], {})
+        )
+        self.assertIsNotNone(ret)
+
+
     def test_bpfmt(self, mock_check, _mock_run):
         """Verify the bpfmt builtin hook."""
         # First call should do nothing as there are no files to check.
