@@ -343,6 +343,40 @@ def check_custom(project, commit, _desc, diff, options=None, **kwargs):
                       **kwargs)
 
 
+def check_aosp_license(project, commit, _desc, diff, options=None):
+    """Checks that if all new added files has AOSP licenses"""
+    # TODO(b/370907797): Support option to exclude files with certain patterns.
+
+    # Filter diff based on extension.
+    include_list = [
+        # Coding languages and scripts.
+        r".*\.c$",
+        r".*\.cc$",
+        r".*\.cpp$",
+        r".*\.h$",
+        r".*\.java$",
+        r".*\.kt$",
+        r".*\.rs$",
+        r".*\.py$",
+        r".*\.sh$",
+
+        # Build and config files.
+        r".*\.bp$",
+        r".*\.xml$",
+    ]
+    diff = _filter_diff(diff, include_list)
+
+    # Only check the new-added files.
+    diff = [d for d in diff if d.status == 'A']
+
+    if not diff:
+        return None
+
+    cmd = [get_helper_path('check_aosp_license.py'), '--commit_hash', commit]
+    cmd += options.args(('${PREUPLOAD_FILES}',), diff)
+    return _check_cmd('aosp_license', project, commit, cmd)
+
+
 def check_bpfmt(project, commit, _desc, diff, options=None):
     """Checks that Blueprint files are formatted with bpfmt."""
     filtered = _filter_diff(diff, [r'\.bp$'])
@@ -1061,6 +1095,7 @@ def check_aidl_format(project, commit, _desc, diff, options=None):
 BUILTIN_HOOKS = {
     'aidl_format': check_aidl_format,
     'android_test_mapping_format': check_android_test_mapping,
+    'aosp_license': check_aosp_license,
     'bpfmt': check_bpfmt,
     'checkpatch': check_checkpatch,
     'clang_format': check_clang_format,
