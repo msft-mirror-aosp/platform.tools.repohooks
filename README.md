@@ -178,6 +178,7 @@ This section allows for turning on common/builtin hooks.  There are a bunch of
 canned hooks already included geared towards AOSP style guidelines.
 
 * `aidl_format`: Run AIDL files (.aidl) through `aidl-format`.
+* `aosp_license`: Check if all new-added file have valid AOSP license headers.
 * `android_test_mapping_format`: Validate TEST_MAPPING files in Android source
   code. Refer to go/test-mapping for more details.
 * `bpfmt`: Run Blueprint files (.bp) through `bpfmt`.
@@ -331,7 +332,6 @@ without a bypass being required.
   their own list of files like `.cc` and `.py` and `.xml`.
 * Add more checkers.
   * `clang-check`: Runs static analyzers against code.
-  * License checking (like require AOSP header).
   * Whitespace checking (trailing/tab mixing/etc...).
   * Long line checking.
   * Commit message checks (correct format/BUG/TEST/SOB tags/etc...).
