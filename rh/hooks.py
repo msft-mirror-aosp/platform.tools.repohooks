@@ -367,6 +367,7 @@ def check_aosp_license(project, commit, _desc, diff, options=None):
 
         # Build and config files.
         r".*\.bp$",
+        r".*\.mk$",
         r".*\.xml$",
     ]
     diff = _filter_diff(diff, include_list, exclude_list)
