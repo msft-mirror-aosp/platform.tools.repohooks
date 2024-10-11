@@ -345,7 +345,12 @@ def check_custom(project, commit, _desc, diff, options=None, **kwargs):
 
 def check_aosp_license(project, commit, _desc, diff, options=None):
     """Checks that if all new added files has AOSP licenses"""
-    # TODO(b/370907797): Support option to exclude files with certain patterns.
+
+    exclude_dir_args = [x for x in options.args()
+                        if x.startswith('--exclude-dirs=')]
+    exclude_dirs = [x[len('--exclude-dirs='):].split(',')
+                    for x in exclude_dir_args]
+    exclude_list = [fr'^{x}/.*$' for dir_list in exclude_dirs for x in dir_list]
 
     # Filter diff based on extension.
     include_list = [
@@ -362,9 +367,10 @@ def check_aosp_license(project, commit, _desc, diff, options=None):
 
         # Build and config files.
         r".*\.bp$",
+        r".*\.mk$",
         r".*\.xml$",
     ]
-    diff = _filter_diff(diff, include_list)
+    diff = _filter_diff(diff, include_list, exclude_list)
 
     # Only check the new-added files.
     diff = [d for d in diff if d.status == 'A']
@@ -373,7 +379,7 @@ def check_aosp_license(project, commit, _desc, diff, options=None):
         return None
 
     cmd = [get_helper_path('check_aosp_license.py'), '--commit_hash', commit]
-    cmd += options.args(('${PREUPLOAD_FILES}',), diff)
+    cmd += HookOptions.expand_vars(('${PREUPLOAD_FILES}',), diff)
     return _check_cmd('aosp_license', project, commit, cmd)
 
 
@@ -492,13 +498,12 @@ def check_ktfmt(project, commit, _desc, diff, options=None):
 
 
 def check_commit_msg_bug_field(project, commit, desc, _diff, options=None):
-    """Check the commit message for a 'Bug:' line."""
-    field = 'Bug'
-    regex = fr'^{field}: (None|[0-9]+(, [0-9]+)*)$'
+    """Check the commit message for a 'Bug:' or 'Fix:' line."""
+    regex = r'^(Bug|Fix): (None|[0-9]+(, [0-9]+)*)$'
     check_re = re.compile(regex)
 
     if options.args():
-        raise ValueError(f'commit msg {field} check takes no options')
+        raise ValueError('commit msg Bug check takes no options')
 
     found = []
     for line in desc.splitlines():
@@ -507,13 +512,13 @@ def check_commit_msg_bug_field(project, commit, desc, _diff, options=None):
 
     if not found:
         error = (
-            f'Commit message is missing a "{field}:" line.  It must match the\n'
+            'Commit message is missing a "Bug:" line.  It must match the\n'
             f'following case-sensitive regex:\n\n    {regex}'
         )
     else:
         return None
 
-    return [rh.results.HookResult(f'commit msg: "{field}:" check',
+    return [rh.results.HookResult('commit msg: "Bug:" check',
                                   project, commit, error=error)]
 
 
