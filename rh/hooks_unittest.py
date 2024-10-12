@@ -473,6 +473,7 @@ class BuiltinHooksTests(unittest.TestCase):
             rh.hooks.check_commit_msg_bug_field, True, (
                 'subj\n\nBug: 1234\n',
                 'subj\n\nBug: 1234\nChange-Id: blah\n',
+                'subj\n\nFix: 1234\n',
             ))
 
         # Check some bad messages.
@@ -483,6 +484,7 @@ class BuiltinHooksTests(unittest.TestCase):
                 'subj\n\nBUG: 1234\n',
                 'subj\n\nBug: N/A\n',
                 'subj\n\nBug:\n',
+                'subj\n\nFIX=1234\n',
             ))
 
     def test_commit_msg_changeid_field(self, _mock_check, _mock_run):
