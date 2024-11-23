@@ -343,6 +343,46 @@ def check_custom(project, commit, _desc, diff, options=None, **kwargs):
                       **kwargs)
 
 
+def check_aosp_license(project, commit, _desc, diff, options=None):
+    """Checks that if all new added files has AOSP licenses"""
+
+    exclude_dir_args = [x for x in options.args()
+                        if x.startswith('--exclude-dirs=')]
+    exclude_dirs = [x[len('--exclude-dirs='):].split(',')
+                    for x in exclude_dir_args]
+    exclude_list = [fr'^{x}/.*$' for dir_list in exclude_dirs for x in dir_list]
+
+    # Filter diff based on extension.
+    include_list = [
+        # Coding languages and scripts.
+        r".*\.c$",
+        r".*\.cc$",
+        r".*\.cpp$",
+        r".*\.h$",
+        r".*\.java$",
+        r".*\.kt$",
+        r".*\.rs$",
+        r".*\.py$",
+        r".*\.sh$",
+
+        # Build and config files.
+        r".*\.bp$",
+        r".*\.mk$",
+        r".*\.xml$",
+    ]
+    diff = _filter_diff(diff, include_list, exclude_list)
+
+    # Only check the new-added files.
+    diff = [d for d in diff if d.status == 'A']
+
+    if not diff:
+        return None
+
+    cmd = [get_helper_path('check_aosp_license.py'), '--commit_hash', commit]
+    cmd += HookOptions.expand_vars(('${PREUPLOAD_FILES}',), diff)
+    return _check_cmd('aosp_license', project, commit, cmd)
+
+
 def check_bpfmt(project, commit, _desc, diff, options=None):
     """Checks that Blueprint files are formatted with bpfmt."""
     filtered = _filter_diff(diff, [r'\.bp$'])
@@ -458,13 +498,12 @@ def check_ktfmt(project, commit, _desc, diff, options=None):
 
 
 def check_commit_msg_bug_field(project, commit, desc, _diff, options=None):
-    """Check the commit message for a 'Bug:' line."""
-    field = 'Bug'
-    regex = fr'^{field}: (None|[0-9]+(, [0-9]+)*)$'
+    """Check the commit message for a 'Bug:' or 'Fix:' line."""
+    regex = r'^(Bug|Fix): (None|[0-9]+(, [0-9]+)*)$'
     check_re = re.compile(regex)
 
     if options.args():
-        raise ValueError(f'commit msg {field} check takes no options')
+        raise ValueError('commit msg Bug check takes no options')
 
     found = []
     for line in desc.splitlines():
@@ -473,13 +512,13 @@ def check_commit_msg_bug_field(project, commit, desc, _diff, options=None):
 
     if not found:
         error = (
-            f'Commit message is missing a "{field}:" line.  It must match the\n'
+            'Commit message is missing a "Bug:" line.  It must match the\n'
             f'following case-sensitive regex:\n\n    {regex}'
         )
     else:
         return None
 
-    return [rh.results.HookResult(f'commit msg: "{field}:" check',
+    return [rh.results.HookResult('commit msg: "Bug:" check',
                                   project, commit, error=error)]
 
 
@@ -1061,6 +1100,7 @@ def check_aidl_format(project, commit, _desc, diff, options=None):
 BUILTIN_HOOKS = {
     'aidl_format': check_aidl_format,
     'android_test_mapping_format': check_android_test_mapping,
+    'aosp_license': check_aosp_license,
     'bpfmt': check_bpfmt,
     'checkpatch': check_checkpatch,
     'clang_format': check_clang_format,
