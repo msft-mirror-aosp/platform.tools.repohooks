@@ -141,7 +141,7 @@ class PreUploadConfig(object):
         """List of all tool paths."""
         return dict(self.config.items(self.TOOL_PATHS_SECTION, ()))
 
-    def callable_hooks(self):
+    def callable_custom_hooks(self):
         """Yield a CallableHook for each hook to be executed."""
         scope = rh.hooks.ExclusionScope([])
         for hook in self.custom_hooks:
@@ -151,6 +151,9 @@ class PreUploadConfig(object):
             func = functools.partial(rh.hooks.check_custom, options=options)
             yield rh.hooks.CallableHook(hook, func, scope)
 
+    def callable_builtin_hooks(self):
+        """Yield a CallableHook for each hook to be executed."""
+        scope = rh.hooks.ExclusionScope([])
         for hook in self.builtin_hooks:
             options = rh.hooks.HookOptions(hook,
                                            self.builtin_hook_option(hook),
