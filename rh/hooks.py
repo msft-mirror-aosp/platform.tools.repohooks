@@ -1002,8 +1002,7 @@ def check_rustfmt(project, commit, _desc, diff, options=None):
         # location of the error.
         if result.returncode:
             ret.append(rh.results.HookResult(
-                'rustfmt', project, commit,
-                error=(result.stdout or f'rustfmt failed with status {result.returncode}'),
+                'rustfmt', project, commit, error=result.stdout,
                 files=(d.file,)))
             continue
         # TODO(b/164111102): rustfmt stable does not support --check on stdin.
