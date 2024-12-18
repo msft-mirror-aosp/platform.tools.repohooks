@@ -134,11 +134,12 @@ lister = ls ${PREUPLOAD_FILES}
 checker prefix = check --file=${PREUPLOAD_FILES_PREFIXED}
 checker flag = check --file ${PREUPLOAD_FILES_PREFIXED}
 ```
+
 With a commit that changes `path1/file1` and `path2/file2`, then this will run
 programs with the arguments:
-* ['ls', 'path1/file1', 'path2/file2']
-* ['check', '--file=path1/file1', '--file=path2/file2']
-* ['check', '--file', 'path1/file1', '--file', 'path2/file2']
+* `['ls', 'path1/file1', 'path2/file2']`
+* `['check', '--file=path1/file1', '--file=path2/file2']`
+* `['check', '--file', 'path1/file1', '--file', 'path2/file2']`
 
 ## [Options]
 
@@ -245,7 +246,7 @@ cpplint = --filter=-x ${PREUPLOAD_FILES}
 
 *** note
 This section can only be added to the repo project-wide settings
-[GLOBAL-PREUPLOAD.cfg].
+[GLOBAL-PREUPLOAD.cfg](#GLOBAL_PREUPLOAD_cfg).
 ***
 
 Used to explicitly exclude some projects when processing a hook. With this
