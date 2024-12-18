@@ -20,9 +20,8 @@ See its help for more info.
 Sometimes you might want to bypass the upload checks.  While this is **strongly
 discouraged** (often failures you add will affect others and block them too),
 sometimes there are valid reasons for this.  You can simply use the option
-`--no-verify` when running `repo upload` to skip all upload checks.  This will
-skip **all** checks and not just specific ones.  It should be used only after
-having run & evaluated the upload output previously.
+`--ignore-hooks` when running `repo upload` to ignore all hook errors.
+This will ignore **all** hook errors and not just specific ones.
 
 # Config Files
 
