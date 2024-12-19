@@ -20,6 +20,7 @@ import argparse
 import os
 import re
 import sys
+from typing import List
 
 _path = os.path.realpath(__file__ + '/../..')
 if sys.path[0] != _path:
@@ -54,7 +55,7 @@ AOSP_LICENSE_HEADER = (
 )
 
 
-license_re = re.compile(AOSP_LICENSE_HEADER, re.MULTILINE)
+LICENSE_RE = re.compile(AOSP_LICENSE_HEADER, re.MULTILINE)
 
 
 AOSP_LICENSE_SUBSTR = 'Licensed under the Apache License'
@@ -62,22 +63,19 @@ AOSP_LICENSE_SUBSTR = 'Licensed under the Apache License'
 
 def check_license(contents: str) -> bool:
     """Verifies the AOSP license/copyright header."""
-    return license_re.search(contents) is not None
+    return LICENSE_RE.search(contents) is not None
 
 
 def get_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description=(
-            'Check if the given files in a given commit has an AOSP license.'
-        )
-    )
+    """Returns a command line parser."""
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        'file_paths',
+        'files',
         nargs='+',
         help='The file paths to check.',
     )
     parser.add_argument(
-        '--commit_hash',
+        '--commit-hash',
         '-c',
         help='The commit hash to check.',
         # TODO(b/370907797): Read the contents on the file system by default
@@ -87,26 +85,23 @@ def get_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: list[str]):
+def main(argv: List[str]) -> int:
     """The main entry."""
     parser = get_parser()
-    args = parser.parse_args(argv)
-    commit_hash = args.commit_hash
-    file_paths = args.file_paths
+    opts = parser.parse_args(argv)
+    commit_hash = opts.commit_hash
+    file_paths = opts.file_paths
 
     all_passed = True
     for file_path in file_paths:
         contents = rh.git.get_file_content(commit_hash, file_path)
         if not check_license(contents):
-            has_pattern = contents.find(AOSP_LICENSE_SUBSTR) != -1
-            if has_pattern:
-                print(f'Malformed AOSP license in {file_path}')
+            if AOSP_LICENSE_SUBSTR in contents:
+                print(f'{file_path}: Malformed AOSP license', file=sys.stderr)
             else:
-                print(f'Missing AOSP license in {file_path}')
+                print(f'{file_path}: Missing AOSP license', file=sys.stderr)
             all_passed = False
-    if not all_passed:
-        return 1
-    return 0
+    return 0 if all_passed else 1
 
 
 if __name__ == '__main__':

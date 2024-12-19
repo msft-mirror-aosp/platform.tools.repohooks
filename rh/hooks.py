@@ -353,24 +353,24 @@ def check_aosp_license(project, commit, _desc, diff, options=None):
     exclude_list = [fr'^{x}/.*$' for dir_list in exclude_dirs for x in dir_list]
 
     # Filter diff based on extension.
-    include_list = [
+    extensions = frozenset((
         # Coding languages and scripts.
-        r".*\.c$",
-        r".*\.cc$",
-        r".*\.cpp$",
-        r".*\.h$",
-        r".*\.java$",
-        r".*\.kt$",
-        r".*\.rs$",
-        r".*\.py$",
-        r".*\.sh$",
+        'c',
+        'cc',
+        'cpp',
+        'h',
+        'java',
+        'kt',
+        'rs',
+        'py',
+        'sh',
 
         # Build and config files.
-        r".*\.bp$",
-        r".*\.mk$",
-        r".*\.xml$",
-    ]
-    diff = _filter_diff(diff, include_list, exclude_list)
+        'bp',
+        'mk',
+        'xml',
+    ))
+    diff = _filter_diff(diff, [r'\.(' + '|'.join(extensions) + r')$'], exclude_list)
 
     # Only check the new-added files.
     diff = [d for d in diff if d.status == 'A']
@@ -378,7 +378,7 @@ def check_aosp_license(project, commit, _desc, diff, options=None):
     if not diff:
         return None
 
-    cmd = [get_helper_path('check_aosp_license.py'), '--commit_hash', commit]
+    cmd = [get_helper_path('check_aosp_license.py'), '--commit-hash', commit]
     cmd += HookOptions.expand_vars(('${PREUPLOAD_FILES}',), diff)
     return _check_cmd('aosp_license', project, commit, cmd)
 
