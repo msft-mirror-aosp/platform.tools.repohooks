@@ -32,37 +32,6 @@ DEFAULT_PYLINTRC_PATH = os.path.join(
     os.path.dirname(os.path.realpath(__file__)), 'pylintrc')
 
 
-def is_pylint3(pylint):
-    """See whether |pylint| supports Python 3."""
-    # Make sure pylint is using Python 3.
-    result = subprocess.run([pylint, '--version'], stdout=subprocess.PIPE,
-                            check=True)
-    if b'Python 3' not in result.stdout:
-        print(f'{__file__}: unable to locate a Python 3 version of pylint; '
-              'Python 3 support cannot be guaranteed', file=sys.stderr)
-        return False
-
-    return True
-
-
-def find_pylint3():
-    """Figure out the name of the pylint tool for Python 3.
-
-    It keeps changing with Python 2->3 migrations.  Fun.
-    """
-    # Prefer pylint3 as that's what we want.
-    if shutil.which('pylint3'):
-        return 'pylint3'
-
-    # If there's no pylint, give up.
-    if not shutil.which('pylint'):
-        print(f'{__file__}: unable to locate pylint; please install:\n'
-              'sudo apt-get install pylint', file=sys.stderr)
-        sys.exit(1)
-
-    return 'pylint'
-
-
 def run_lint(pylint: str, unknown: Optional[List[str]],
              files: Optional[List[str]], init_hook: str,
              pylintrc: Optional[str] = None) -> bool:
@@ -181,9 +150,7 @@ def get_parser():
     """Return a command line parser."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--init-hook', help='Init hook commands to run.')
-    parser.add_argument('--py3', action='store_true',
-                        help='Force Python 3 mode')
-    parser.add_argument('--executable-path',
+    parser.add_argument('--executable-path', default='pylint',
                         help='The path of the pylint executable.')
     parser.add_argument('--no-rcfile', dest='use_default_conf',
                         help='Specify to use the executable\'s default '
@@ -200,16 +167,6 @@ def main(argv):
     ret = 0
 
     pylint = opts.executable_path
-    if pylint is None:
-        if opts.py3:
-            pylint = find_pylint3()
-        else:
-            pylint = 'pylint'
-
-    # Make sure pylint is using Python 3.
-    if opts.py3:
-        is_pylint3(pylint)
-
     if not opts.use_default_conf:
         pylintrc_map = map_pyfiles_to_pylintrc(opts.files)
         first = True
