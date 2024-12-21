@@ -90,7 +90,7 @@ def main(argv: List[str]) -> int:
     parser = get_parser()
     opts = parser.parse_args(argv)
     commit_hash = opts.commit_hash
-    file_paths = opts.file_paths
+    file_paths = opts.files
 
     all_passed = True
     for file_path in file_paths:

@@ -207,7 +207,7 @@ canned hooks already included geared towards AOSP style guidelines.
   --include-dirs, which if specified will limit enforcement to only files under
   the specified directories.
 * `pylint`: Alias of `pylint3`.
-* `pylint2`: Run Python code through `pylint` using Python 2.
+* `pylint2`: Ignored for compatibility with old configs.
 * `pylint3`: Run Python code through `pylint` using Python 3.
 * `rustfmt`: Run Rust code through `rustfmt`.
 * `xmllint`: Run XML code through `xmllint`.

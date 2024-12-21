@@ -27,8 +27,16 @@ del _path
 class HookResult(object):
     """A single hook result."""
 
-    def __init__(self, hook, project, commit, error, files=(),
-                 fixup_cmd: Optional[List[str]] = None):
+    def __init__(
+        self,
+        hook,
+        project,
+        commit,
+        error,
+        warning: bool = False,
+        files=(),
+        fixup_cmd: Optional[List[str]] = None,
+    ):
         """Initialize.
 
         Args:
@@ -37,6 +45,7 @@ class HookResult(object):
           commit: The git commit sha.
           error: A string representation of the hook's result.  Empty on
               success.
+          warning: Whether this result is a warning, not an error.
           files: The list of files that were involved in the hook execution.
           fixup_cmd: A command that can automatically fix errors found in the
               hook's execution.  Can be None if the hook does not support
@@ -46,16 +55,17 @@ class HookResult(object):
         self.project = project
         self.commit = commit
         self.error = error
+        self._warning = warning
         self.files = files
         self.fixup_cmd = fixup_cmd
 
     def __bool__(self):
         """Whether this result is an error."""
-        return bool(self.error)
+        return bool(self.error) and not self._warning
 
     def is_warning(self):
         """Whether this result is a non-fatal warning."""
-        return False
+        return self._warning
 
 
 class HookCommandResult(HookResult):
