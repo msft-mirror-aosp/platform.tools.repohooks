@@ -499,11 +499,12 @@ def check_ktfmt(project, commit, _desc, diff, options=None):
 
 def check_commit_msg_bug_field(project, commit, desc, _diff, options=None):
     """Check the commit message for a 'Bug:' or 'Fix:' line."""
+    field = 'Bug'
     regex = r'^(Bug|Fix): (None|[0-9]+(, [0-9]+)*)$'
     check_re = re.compile(regex)
 
     if options.args():
-        raise ValueError('commit msg Bug check takes no options')
+        raise ValueError(f'commit msg {field} check takes no options')
 
     found = []
     for line in desc.splitlines():
@@ -512,13 +513,13 @@ def check_commit_msg_bug_field(project, commit, desc, _diff, options=None):
 
     if not found:
         error = (
-            'Commit message is missing a "Bug:" line.  It must match the\n'
+            f'Commit message is missing a "{field}:" line.  It must match the\n'
             f'following case-sensitive regex:\n\n    {regex}'
         )
     else:
         return None
 
-    return [rh.results.HookResult('commit msg: "Bug:" check',
+    return [rh.results.HookResult(f'commit msg: "{field}:" check',
                                   project, commit, error=error)]
 
 
