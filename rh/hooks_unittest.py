@@ -911,13 +911,15 @@ class BuiltinHooksTests(unittest.TestCase):
 
     def test_pylint(self, mock_check, _mock_run):
         """Verify the pylint builtin hook."""
-        self._test_file_filter(mock_check, rh.hooks.check_pylint2,
+        self._test_file_filter(mock_check, rh.hooks.check_pylint3,
                                ('foo.py',))
 
     def test_pylint2(self, mock_check, _mock_run):
         """Verify the pylint2 builtin hook."""
-        self._test_file_filter(mock_check, rh.hooks.check_pylint2,
-                               ('foo.py',))
+        ret = rh.hooks.check_pylint2(
+            self.project, 'commit', 'desc', (), options=self.options)
+        self.assertEqual(len(ret), 1)
+        self.assertTrue(ret[0].is_warning())
 
     def test_pylint3(self, mock_check, _mock_run):
         """Verify the pylint3 builtin hook."""
