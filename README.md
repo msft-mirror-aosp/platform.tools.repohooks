@@ -20,9 +20,8 @@ See its help for more info.
 Sometimes you might want to bypass the upload checks.  While this is **strongly
 discouraged** (often failures you add will affect others and block them too),
 sometimes there are valid reasons for this.  You can simply use the option
-`--no-verify` when running `repo upload` to skip all upload checks.  This will
-skip **all** checks and not just specific ones.  It should be used only after
-having run & evaluated the upload output previously.
+`--ignore-hooks` when running `repo upload` to ignore all hook errors.
+This will ignore **all** hook errors and not just specific ones.
 
 # Config Files
 
@@ -113,7 +112,14 @@ force your own quote handling.
 Some variables are available to make it easier to handle OS differences.  These
 are automatically expanded for you:
 
-* `${REPO_ROOT}`: The absolute path of the root of the repo checkout.
+* `${REPO_PATH}`: The path to the project relative to the root.
+  e.g. `tools/repohooks`
+* `${REPO_PROJECT}`: The name of the project.
+  e.g. `platform/tools/repohooks`
+* `${REPO_ROOT}`: The absolute path of the root of the repo checkout.  If the
+  project is in a submanifest, this points to the root of the submanifest.
+* `${REPO_OUTER_ROOT}`: The absolute path of the root of the repo checkout.
+  This always points to the root of the overall repo checkout.
 * `${BUILD_OS}`: The string `darwin-x86` for macOS and the string `linux-x86`
   for Linux/x86.
 
@@ -127,11 +133,12 @@ lister = ls ${PREUPLOAD_FILES}
 checker prefix = check --file=${PREUPLOAD_FILES_PREFIXED}
 checker flag = check --file ${PREUPLOAD_FILES_PREFIXED}
 ```
+
 With a commit that changes `path1/file1` and `path2/file2`, then this will run
 programs with the arguments:
-* ['ls', 'path1/file1', 'path2/file2']
-* ['check', '--file=path1/file1', '--file=path2/file2']
-* ['check', '--file', 'path1/file1', '--file', 'path2/file2']
+* `['ls', 'path1/file1', 'path2/file2']`
+* `['check', '--file=path1/file1', '--file=path2/file2']`
+* `['check', '--file', 'path1/file1', '--file', 'path2/file2']`
 
 ## [Options]
 
@@ -170,6 +177,10 @@ some dog = tool --no-cat-in-commit-message ${PREUPLOAD_COMMIT_MESSAGE}
 This section allows for turning on common/builtin hooks.  There are a bunch of
 canned hooks already included geared towards AOSP style guidelines.
 
+* `aidl_format`: Run AIDL files (.aidl) through `aidl-format`.
+* `aosp_license`: Check if all new-added file have valid AOSP license headers.
+* `android_test_mapping_format`: Validate TEST_MAPPING files in Android source
+  code. Refer to go/test-mapping for more details.
 * `bpfmt`: Run Blueprint files (.bp) through `bpfmt`.
 * `checkpatch`: Run commits through the Linux kernel's `checkpatch.pl` script.
 * `clang_format`: Run git-clang-format against the commit. The default style is
@@ -188,15 +199,18 @@ canned hooks already included geared towards AOSP style guidelines.
 * `cpplint`: Run through the cpplint tool (for C++ code).
 * `gofmt`: Run Go code through `gofmt`.
 * `google_java_format`: Run Java code through
-  [`google-java-format`](https://github.com/google/google-java-format)
+  [`google-java-format`](https://github.com/google/google-java-format).
+  Supports an additional option --include-dirs, which if specified will limit
+  enforcement to only files under the specified directories.
 * `jsonlint`: Verify JSON code is sane.
-* `pylint`: Alias of `pylint2`.  Will change to `pylint3` by end of 2019.
-* `pylint2`: Run Python code through `pylint` using Python 2.
+* `ktfmt`: Run Kotlin code through `ktfmt`. Supports an additional option
+  --include-dirs, which if specified will limit enforcement to only files under
+  the specified directories.
+* `pylint`: Alias of `pylint3`.
+* `pylint2`: Ignored for compatibility with old configs.
 * `pylint3`: Run Python code through `pylint` using Python 3.
 * `rustfmt`: Run Rust code through `rustfmt`.
 * `xmllint`: Run XML code through `xmllint`.
-* `android_test_mapping_format`: Validate TEST_MAPPING files in Android source
-  code. Refer to go/test-mapping for more details.
 
 Note: Builtin hooks tend to match specific filenames (e.g. `.json`).  If no
 files match in a specific commit, then the hook will be skipped for that commit.
@@ -227,6 +241,34 @@ See [Placeholders](#Placeholders) for variables you can expand automatically.
 cpplint = --filter=-x ${PREUPLOAD_FILES}
 ```
 
+## [Builtin Hooks Exclude Paths]
+
+*** note
+This section can only be added to the repo project-wide settings
+[GLOBAL-PREUPLOAD.cfg](#GLOBAL_PREUPLOAD_cfg).
+***
+
+Used to explicitly exclude some projects when processing a hook. With this
+section, it is possible to define a hook that should apply to the majority of
+projects except a few.
+
+An entry must completely match the project's `REPO_PATH`. The paths can use the
+[shell-style wildcards](https://docs.python.org/library/fnmatch.html) and
+quotes. For advanced cases, it is possible to use a [regular
+expression](https://docs.python.org/howto/regex.html) by using the `^` prefix.
+
+```
+[Builtin Hooks Exclude Paths]
+# Run cpplint on all projects except ones under external/ and vendor/.
+# The "external" and "vendor" projects, if they exist, will still run cpplint.
+cpplint = external/* vendor/*
+
+# Run rustfmt on all projects except ones under external/.  All projects under
+# hardware/ will be excluded except for ones starting with hardware/google (due to
+# the negative regex match).
+rustfmt = external/ ^hardware/(!?google)
+```
+
 ## [Tool Paths]
 
 Some builtin hooks need to call external executables to work correctly.  By
@@ -235,6 +277,9 @@ executables can be overridden through `[Tool Paths]`.  This is helpful to
 provide consistent behavior for developers across different OS and Linux
 distros/versions.  The following tools are recognized:
 
+* `aidl-format`: used for the `aidl_format` builtin hook.
+* `android-test-mapping-format`: used for the `android_test_mapping_format`
+  builtin hook.
 * `bpfmt`: used for the `bpfmt` builtin hook.
 * `clang-format`: used for the `clang_format` builtin hook.
 * `cpplint`: used for the `cpplint` builtin hook.
@@ -242,10 +287,9 @@ distros/versions.  The following tools are recognized:
 * `gofmt`: used for the `gofmt` builtin hook.
 * `google-java-format`: used for the `google_java_format` builtin hook.
 * `google-java-format-diff`: used for the `google_java_format` builtin hook.
+* `ktfmt`: used for the `ktfmt` builtin hook.
 * `pylint`: used for the `pylint` builtin hook.
 * `rustfmt`: used for the `rustfmt` builtin hook.
-* `android-test-mapping-format`: used for the `android_test_mapping_format`
-  builtin hook.
 
 See [Placeholders](#Placeholders) for variables you can expand automatically.
 
@@ -276,7 +320,6 @@ without a bypass being required.
 
 # TODO/Limitations
 
-* `pylint` should support per-directory pylintrc files.
 * Some checkers operate on the files as they exist in the filesystem.  This is
   not easy to fix because the linters require not just the modified file but the
   entire repo in order to perform full checks.  e.g. `pylint` needs to know what
@@ -289,7 +332,6 @@ without a bypass being required.
   their own list of files like `.cc` and `.py` and `.xml`.
 * Add more checkers.
   * `clang-check`: Runs static analyzers against code.
-  * License checking (like require AOSP header).
   * Whitespace checking (trailing/tab mixing/etc...).
   * Long line checking.
   * Commit message checks (correct format/BUG/TEST/SOB tags/etc...).
