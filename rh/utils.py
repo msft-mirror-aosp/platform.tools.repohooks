@@ -426,7 +426,11 @@ def run(cmd, redirect_stdout=False, redirect_stderr=False, cwd=None, input=None,
         if e.errno == errno.EACCES:
             estr += '; does the program need `chmod a+x`?'
         if not check:
-            result = CompletedProcess(args=cmd, stderr=estr, returncode=255)
+            result = CompletedProcess(args=cmd, returncode=255)
+            if combine_stdout_stderr:
+                result.stdout = estr
+            else:
+                result.stderr = estr
         else:
             raise CalledProcessError(
                 result.returncode, result.cmd, msg=estr,

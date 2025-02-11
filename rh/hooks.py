@@ -353,24 +353,24 @@ def check_aosp_license(project, commit, _desc, diff, options=None):
     exclude_list = [fr'^{x}/.*$' for dir_list in exclude_dirs for x in dir_list]
 
     # Filter diff based on extension.
-    include_list = [
+    extensions = frozenset((
         # Coding languages and scripts.
-        r".*\.c$",
-        r".*\.cc$",
-        r".*\.cpp$",
-        r".*\.h$",
-        r".*\.java$",
-        r".*\.kt$",
-        r".*\.rs$",
-        r".*\.py$",
-        r".*\.sh$",
+        'c',
+        'cc',
+        'cpp',
+        'h',
+        'java',
+        'kt',
+        'rs',
+        'py',
+        'sh',
 
         # Build and config files.
-        r".*\.bp$",
-        r".*\.mk$",
-        r".*\.xml$",
-    ]
-    diff = _filter_diff(diff, include_list, exclude_list)
+        'bp',
+        'mk',
+        'xml',
+    ))
+    diff = _filter_diff(diff, [r'\.(' + '|'.join(extensions) + r')$'], exclude_list)
 
     # Only check the new-added files.
     diff = [d for d in diff if d.status == 'A']
@@ -378,7 +378,7 @@ def check_aosp_license(project, commit, _desc, diff, options=None):
     if not diff:
         return None
 
-    cmd = [get_helper_path('check_aosp_license.py'), '--commit_hash', commit]
+    cmd = [get_helper_path('check_aosp_license.py'), '--commit-hash', commit]
     cmd += HookOptions.expand_vars(('${PREUPLOAD_FILES}',), diff)
     return _check_cmd('aosp_license', project, commit, cmd)
 
@@ -499,11 +499,12 @@ def check_ktfmt(project, commit, _desc, diff, options=None):
 
 def check_commit_msg_bug_field(project, commit, desc, _diff, options=None):
     """Check the commit message for a 'Bug:' or 'Fix:' line."""
+    field = 'Bug'
     regex = r'^(Bug|Fix): (None|[0-9]+(, [0-9]+)*)$'
     check_re = re.compile(regex)
 
     if options.args():
-        raise ValueError('commit msg Bug check takes no options')
+        raise ValueError(f'commit msg {field} check takes no options')
 
     found = []
     for line in desc.splitlines():
@@ -512,13 +513,13 @@ def check_commit_msg_bug_field(project, commit, desc, _diff, options=None):
 
     if not found:
         error = (
-            'Commit message is missing a "Bug:" line.  It must match the\n'
+            f'Commit message is missing a "{field}:" line.  It must match the\n'
             f'following case-sensitive regex:\n\n    {regex}'
         )
     else:
         return None
 
-    return [rh.results.HookResult('commit msg: "Bug:" check',
+    return [rh.results.HookResult(f'commit msg: "{field}:" check',
                                   project, commit, error=error)]
 
 
@@ -975,15 +976,22 @@ def _check_pylint(project, commit, _desc, diff, extra_args=None, options=None):
 
 
 def check_pylint2(project, commit, desc, diff, options=None):
-    """Run pylint through Python 2."""
-    return _check_pylint(project, commit, desc, diff, options=options)
+    """Run pylint through Python 2.
+
+    This hook is not supported anymore, but we keep it registered to avoid
+    breaking in older branches with old configs that still have it.
+    """
+    del desc, diff, options
+    return [rh.results.HookResult(
+        'pylint2', project, commit,
+        ('The pylint2 check is no longer supported.  '
+         'Please delete from PREUPLOAD.cfg.'),
+        warning=True)]
 
 
 def check_pylint3(project, commit, desc, diff, options=None):
     """Run pylint through Python 3."""
-    return _check_pylint(project, commit, desc, diff,
-                         extra_args=['--py3'],
-                         options=options)
+    return _check_pylint(project, commit, desc, diff, options=options)
 
 
 def check_rustfmt(project, commit, _desc, diff, options=None):
