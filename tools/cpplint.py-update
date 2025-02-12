@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env python3
 # Copyright 2016 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,48 +13,68 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -eu
+"""Helper script to quickly update the bundled cpplint.py script."""
 
-# The outdated Google version that only supports Python 2.
-GITHUB_URL="https://github.com/google/styleguide/raw/gh-pages/cpplint"
-# The forked version with Python 3 support.
-GITHUB_URL="https://github.com/cpplint/cpplint/raw/develop"
-SCRIPT_DIR="$(dirname "$(readlink -f -- "$0")")"
+import argparse
+import json
+from pathlib import Path
+import sys
+import urllib.request
 
-usage() {
-  cat <<EOF
-Usage: $0
 
-Helper script to quickly update the bundled cpplint.py script.
+assert (sys.version_info.major, sys.version_info.minor) >= (3, 9), (
+    f"Python 3.9 or newer is required; found {sys.version}")
 
-EOF
 
-  if [[ $# -ne 0 ]]; then
-    echo "ERROR: $*" 2>&1
-    exit 1
-  else
-    exit 0
-  fi
-}
+THIS_FILE = Path(__file__).resolve()
+THIS_DIR = THIS_FILE.parent
+CPPLINT_PY = THIS_DIR / "cpplint.py"
 
-main() {
-  while [[ $# -gt 0 ]]; do
-    case $1 in
-    -h|--help) usage;;
-    -x) set -x;;
-    *) usage "Unknown option: $1";;
-    esac
-    shift
-  done
 
-  # Download cpplint.py from upstream.
-  local cpplint_py="${SCRIPT_DIR}/cpplint.py"
-  wget "${GITHUB_URL}/cpplint.py" -O "${cpplint_py}"
-  sed -i \
-    -e '1s|python$|python3|' \
-    -e '2i# pylint: skip-file' \
-    "${cpplint_py}"
-  chmod +x "${cpplint_py}"
-}
+# The cpplint project.
+GITHUB_URL = "https://github.com/cpplint/cpplint/raw"
 
-main "$@"
+
+def download(commit: str) -> str:
+    """Download latest cpplint version."""
+    url = f"{GITHUB_URL}/{commit}/cpplint.py"
+    with urllib.request.urlopen(url, timeout=60) as fp:
+        return fp.read()
+
+
+def munge_content(data: str) -> str:
+    """Make changes to |data| for local script usage."""
+    lines = data.splitlines()
+    if lines[0].endswith(b"python"):
+        lines[0] += b"3"
+    lines.insert(1, b"# pylint: skip-file")
+    return b"\n".join(lines)
+
+
+def update_script(data: str) -> None:
+    """Update the cpplint script."""
+    CPPLINT_PY.write_bytes(data)
+    CPPLINT_PY.chmod(0o755)
+
+
+def get_parser() -> argparse.ArgumentParser:
+    """Return a command line parser."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    return parser
+
+
+def main(argv: list[str]) -> int:
+    parser = get_parser()
+    opts = parser.parse_args(argv)
+
+    ret = 0
+
+    data = download("develop")
+    data = munge_content(data)
+    update_script(data)
+
+    return ret
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
