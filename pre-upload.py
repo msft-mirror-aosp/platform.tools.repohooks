@@ -29,6 +29,7 @@ from typing import List, Optional
 
 
 # Assert some minimum Python versions as we don't test or support any others.
+# See README.md for what version we may require.
 if sys.version_info < (3, 6):
     print('repohooks: error: Python-3.6+ is required', file=sys.stderr)
     sys.exit(1)

@@ -1,6 +1,6 @@
 # AOSP Preupload Hooks
 
-This repo holds hooks that get run by repo during the upload phase.  They
+This repo holds hooks that get run by [repo] during the upload phase.  They
 perform various checks automatically such as running linters on your code.
 
 Note: Currently all hooks are disabled by default.  Each repo must explicitly
@@ -311,6 +311,14 @@ These are notes for people updating the `pre-upload.py` hook itself:
   and exec-ed in its own context.  The only entry-point that matters is `main`.
 * New hooks can be added in `rh/hooks.py`.  Be sure to keep the list up-to-date
   with the documentation in this file.
+* Python versions
+  * Code loaded & run by end users (i.e. during `repo upload`) should stick to
+    older versions of Python.  We expect users to run on a variety of platforms
+    where Python is not the latest (e.g. Ubuntu LTS that is years behind).  We
+    currently require **Python 3.6**.  This aligns with [repo's supported Python
+    versions](https://gerrit.googlesource.com/git-repo/+/HEAD/docs/python-support.md).
+  * Code only run by repohooks developers may use much newer versions of Python
+    to keep things simple, especially as we don't readily test older versions.
 
 ## Warnings
 
@@ -337,3 +345,5 @@ without a bypass being required.
   * Commit message checks (correct format/BUG/TEST/SOB tags/etc...).
   * Markdown (gitiles) validator.
   * Spell checker.
+
+[repo]: https://gerrit.googlesource.com/git-repo/
