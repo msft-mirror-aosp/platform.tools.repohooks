@@ -29,6 +29,7 @@ from typing import List, Optional
 
 
 # Assert some minimum Python versions as we don't test or support any others.
+# See README.md for what version we may require.
 if sys.version_info < (3, 6):
     print('repohooks: error: Python-3.6+ is required', file=sys.stderr)
     sys.exit(1)
@@ -359,12 +360,13 @@ def _run_project_hooks_in_cwd(
         config = _get_project_config(from_git)
     except rh.config.ValidationError as e:
         output.error('Loading config files', str(e))
-        ret.internal_failure = True
-        return ret
+        return ret._replace(internal_failure=True)
+
+    builtin_hooks = list(config.callable_builtin_hooks())
+    custom_hooks = list(config.callable_custom_hooks())
 
     # If the repo has no pre-upload hooks enabled, then just return.
-    hooks = list(config.callable_hooks())
-    if not hooks:
+    if not builtin_hooks and not custom_hooks:
         return ret
 
     # Set up the environment like repo would with the forall command.
@@ -374,15 +376,16 @@ def _run_project_hooks_in_cwd(
     except rh.utils.CalledProcessError as e:
         output.error('Upstream remote/tracking branch lookup',
                      f'{e}\nDid you run repo start?  Is your HEAD detached?')
-        ret.internal_failure = True
-        return ret
+        return ret._replace(internal_failure=True)
 
     project = rh.Project(name=project_name, dir=proj_dir)
     rel_proj_dir = os.path.relpath(proj_dir, rh.git.find_repo_root())
 
     # Filter out the hooks to process.
-    hooks = [x for x in hooks if rel_proj_dir not in x.scope]
-    if not hooks:
+    builtin_hooks = [x for x in builtin_hooks if rel_proj_dir not in x.scope]
+    custom_hooks = [x for x in custom_hooks if rel_proj_dir not in x.scope]
+
+    if not builtin_hooks and not custom_hooks:
         return ret
 
     os.environ.update({
@@ -415,24 +418,28 @@ def _run_project_hooks_in_cwd(
             os.environ['PREUPLOAD_COMMIT_MESSAGE'] = desc
 
             commit_summary = desc.split('\n', 1)[0]
-            output.commit_start(hooks, commit, commit_summary)
+            output.commit_start(builtin_hooks + custom_hooks, commit, commit_summary)
 
-            futures = (
-                executor.submit(_run_hook, hook, project, commit, desc, diff)
-                for hook in hooks
-            )
-            future_results = (
-                x.result() for x in concurrent.futures.as_completed(futures)
-            )
-            for hook, hook_results, error, warning, duration in future_results:
-                ret.add_results(hook_results)
-                if error is not None or warning is not None:
-                    if warning is not None:
-                        output.hook_warning(hook, warning)
-                    if error is not None:
-                        output.hook_error(hook, error)
-                        output.hook_fixups(ret, hook_results)
-                output.hook_finish(hook, duration)
+            def run_hooks(hooks):
+                futures = (
+                    executor.submit(_run_hook, hook, project, commit, desc, diff)
+                    for hook in hooks
+                )
+                future_results = (
+                    x.result() for x in concurrent.futures.as_completed(futures)
+                )
+                for hook, hook_results, error, warning, duration in future_results:
+                    ret.add_results(hook_results)
+                    if error is not None or warning is not None:
+                        if warning is not None:
+                            output.hook_warning(hook, warning)
+                        if error is not None:
+                            output.hook_error(hook, error)
+                            output.hook_fixups(ret, hook_results)
+                    output.hook_finish(hook, duration)
+
+            run_hooks(builtin_hooks)
+            run_hooks(custom_hooks)
 
     return ret
 
