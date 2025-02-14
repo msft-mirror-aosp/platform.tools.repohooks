@@ -25,8 +25,7 @@ import urllib.request
 
 # Since this is manually run by repohooks developers, we can safely require more
 # recent versions of Python.
-assert (sys.version_info.major, sys.version_info.minor) >= (3, 9), (
-    f"Python 3.9 or newer is required; found {sys.version}")
+assert sys.version_info >= (3, 9), f"Python 3.9+ required; found {sys.version}"
 
 
 THIS_FILE = Path(__file__).resolve()
@@ -77,7 +76,7 @@ def munge_content(data: str) -> str:
     if lines[0].endswith(b"python"):
         lines[0] += b"3"
     lines.insert(1, b"# pylint: skip-file")
-    return b"\n".join(lines)
+    return b"\n".join(lines).rstrip() + b"\n"
 
 
 def update_script(data: str) -> None:
@@ -89,6 +88,10 @@ def update_script(data: str) -> None:
 def get_parser() -> argparse.ArgumentParser:
     """Return a command line parser."""
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--rev",
+        help="What git commit or ref to fetch (default: latest)",
+    )
     return parser
 
 
@@ -98,7 +101,9 @@ def main(argv: list[str]) -> int:
 
     ret = 0
 
-    commit = find_latest_tag()
+    commit = opts.rev
+    if not commit:
+        commit = find_latest_tag()
     data = download(commit)
     data = munge_content(data)
     update_script(data)
