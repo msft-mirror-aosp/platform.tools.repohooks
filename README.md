@@ -1,6 +1,6 @@
 # AOSP Preupload Hooks
 
-This repo holds hooks that get run by repo during the upload phase.  They
+This repo holds hooks that get run by [repo] during the upload phase.  They
 perform various checks automatically such as running linters on your code.
 
 Note: Currently all hooks are disabled by default.  Each repo must explicitly
@@ -20,9 +20,8 @@ See its help for more info.
 Sometimes you might want to bypass the upload checks.  While this is **strongly
 discouraged** (often failures you add will affect others and block them too),
 sometimes there are valid reasons for this.  You can simply use the option
-`--no-verify` when running `repo upload` to skip all upload checks.  This will
-skip **all** checks and not just specific ones.  It should be used only after
-having run & evaluated the upload output previously.
+`--ignore-hooks` when running `repo upload` to ignore all hook errors.
+This will ignore **all** hook errors and not just specific ones.
 
 # Config Files
 
@@ -134,11 +133,12 @@ lister = ls ${PREUPLOAD_FILES}
 checker prefix = check --file=${PREUPLOAD_FILES_PREFIXED}
 checker flag = check --file ${PREUPLOAD_FILES_PREFIXED}
 ```
+
 With a commit that changes `path1/file1` and `path2/file2`, then this will run
 programs with the arguments:
-* ['ls', 'path1/file1', 'path2/file2']
-* ['check', '--file=path1/file1', '--file=path2/file2']
-* ['check', '--file', 'path1/file1', '--file', 'path2/file2']
+* `['ls', 'path1/file1', 'path2/file2']`
+* `['check', '--file=path1/file1', '--file=path2/file2']`
+* `['check', '--file', 'path1/file1', '--file', 'path2/file2']`
 
 ## [Options]
 
@@ -178,6 +178,7 @@ This section allows for turning on common/builtin hooks.  There are a bunch of
 canned hooks already included geared towards AOSP style guidelines.
 
 * `aidl_format`: Run AIDL files (.aidl) through `aidl-format`.
+* `aosp_license`: Check if all new-added file have valid AOSP license headers.
 * `android_test_mapping_format`: Validate TEST_MAPPING files in Android source
   code. Refer to go/test-mapping for more details.
 * `bpfmt`: Run Blueprint files (.bp) through `bpfmt`.
@@ -206,7 +207,7 @@ canned hooks already included geared towards AOSP style guidelines.
   --include-dirs, which if specified will limit enforcement to only files under
   the specified directories.
 * `pylint`: Alias of `pylint3`.
-* `pylint2`: Run Python code through `pylint` using Python 2.
+* `pylint2`: Ignored for compatibility with old configs.
 * `pylint3`: Run Python code through `pylint` using Python 3.
 * `rustfmt`: Run Rust code through `rustfmt`.
 * `xmllint`: Run XML code through `xmllint`.
@@ -244,7 +245,7 @@ cpplint = --filter=-x ${PREUPLOAD_FILES}
 
 *** note
 This section can only be added to the repo project-wide settings
-[GLOBAL-PREUPLOAD.cfg].
+[GLOBAL-PREUPLOAD.cfg](#GLOBAL_PREUPLOAD_cfg).
 ***
 
 Used to explicitly exclude some projects when processing a hook. With this
@@ -310,6 +311,14 @@ These are notes for people updating the `pre-upload.py` hook itself:
   and exec-ed in its own context.  The only entry-point that matters is `main`.
 * New hooks can be added in `rh/hooks.py`.  Be sure to keep the list up-to-date
   with the documentation in this file.
+* Python versions
+  * Code loaded & run by end users (i.e. during `repo upload`) should stick to
+    older versions of Python.  We expect users to run on a variety of platforms
+    where Python is not the latest (e.g. Ubuntu LTS that is years behind).  We
+    currently require **Python 3.6**.  This aligns with [repo's supported Python
+    versions](https://gerrit.googlesource.com/git-repo/+/HEAD/docs/python-support.md).
+  * Code only run by repohooks developers may use much newer versions of Python
+    to keep things simple, especially as we don't readily test older versions.
 
 ## Warnings
 
@@ -331,9 +340,10 @@ without a bypass being required.
   their own list of files like `.cc` and `.py` and `.xml`.
 * Add more checkers.
   * `clang-check`: Runs static analyzers against code.
-  * License checking (like require AOSP header).
   * Whitespace checking (trailing/tab mixing/etc...).
   * Long line checking.
   * Commit message checks (correct format/BUG/TEST/SOB tags/etc...).
   * Markdown (gitiles) validator.
   * Spell checker.
+
+[repo]: https://gerrit.googlesource.com/git-repo/
