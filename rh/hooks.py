@@ -343,6 +343,46 @@ def check_custom(project, commit, _desc, diff, options=None, **kwargs):
                       **kwargs)
 
 
+def check_aosp_license(project, commit, _desc, diff, options=None):
+    """Checks that if all new added files has AOSP licenses"""
+
+    exclude_dir_args = [x for x in options.args()
+                        if x.startswith('--exclude-dirs=')]
+    exclude_dirs = [x[len('--exclude-dirs='):].split(',')
+                    for x in exclude_dir_args]
+    exclude_list = [fr'^{x}/.*$' for dir_list in exclude_dirs for x in dir_list]
+
+    # Filter diff based on extension.
+    extensions = frozenset((
+        # Coding languages and scripts.
+        'c',
+        'cc',
+        'cpp',
+        'h',
+        'java',
+        'kt',
+        'rs',
+        'py',
+        'sh',
+
+        # Build and config files.
+        'bp',
+        'mk',
+        'xml',
+    ))
+    diff = _filter_diff(diff, [r'\.(' + '|'.join(extensions) + r')$'], exclude_list)
+
+    # Only check the new-added files.
+    diff = [d for d in diff if d.status == 'A']
+
+    if not diff:
+        return None
+
+    cmd = [get_helper_path('check_aosp_license.py'), '--commit-hash', commit]
+    cmd += HookOptions.expand_vars(('${PREUPLOAD_FILES}',), diff)
+    return _check_cmd('aosp_license', project, commit, cmd)
+
+
 def check_bpfmt(project, commit, _desc, diff, options=None):
     """Checks that Blueprint files are formatted with bpfmt."""
     filtered = _filter_diff(diff, [r'\.bp$'])
@@ -458,9 +498,9 @@ def check_ktfmt(project, commit, _desc, diff, options=None):
 
 
 def check_commit_msg_bug_field(project, commit, desc, _diff, options=None):
-    """Check the commit message for a 'Bug:' line."""
+    """Check the commit message for a 'Bug:' or 'Fix:' line."""
     field = 'Bug'
-    regex = fr'^{field}: (None|[0-9]+(, [0-9]+)*)$'
+    regex = r'^(Bug|Fix): (None|[0-9]+(, [0-9]+)*)$'
     check_re = re.compile(regex)
 
     if options.args():
@@ -936,15 +976,22 @@ def _check_pylint(project, commit, _desc, diff, extra_args=None, options=None):
 
 
 def check_pylint2(project, commit, desc, diff, options=None):
-    """Run pylint through Python 2."""
-    return _check_pylint(project, commit, desc, diff, options=options)
+    """Run pylint through Python 2.
+
+    This hook is not supported anymore, but we keep it registered to avoid
+    breaking in older branches with old configs that still have it.
+    """
+    del desc, diff, options
+    return [rh.results.HookResult(
+        'pylint2', project, commit,
+        ('The pylint2 check is no longer supported.  '
+         'Please delete from PREUPLOAD.cfg.'),
+        warning=True)]
 
 
 def check_pylint3(project, commit, desc, diff, options=None):
     """Run pylint through Python 3."""
-    return _check_pylint(project, commit, desc, diff,
-                         extra_args=['--py3'],
-                         options=options)
+    return _check_pylint(project, commit, desc, diff, options=options)
 
 
 def check_rustfmt(project, commit, _desc, diff, options=None):
@@ -1061,6 +1108,7 @@ def check_aidl_format(project, commit, _desc, diff, options=None):
 BUILTIN_HOOKS = {
     'aidl_format': check_aidl_format,
     'android_test_mapping_format': check_android_test_mapping,
+    'aosp_license': check_aosp_license,
     'bpfmt': check_bpfmt,
     'checkpatch': check_checkpatch,
     'clang_format': check_clang_format,
@@ -1076,7 +1124,7 @@ BUILTIN_HOOKS = {
     'google_java_format': check_google_java_format,
     'jsonlint': check_json,
     'ktfmt': check_ktfmt,
-    'pylint': check_pylint2,
+    'pylint': check_pylint3,
     'pylint2': check_pylint2,
     'pylint3': check_pylint3,
     'rustfmt': check_rustfmt,
