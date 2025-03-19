@@ -18,7 +18,6 @@
 import argparse
 import errno
 import os
-import shutil
 import sys
 import subprocess
 from typing import Dict, List, Optional, Set
