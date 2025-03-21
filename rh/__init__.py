@@ -1,4 +1,3 @@
-# -*- coding:utf-8 -*-
 # Copyright 2016 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,10 +14,14 @@
 
 """Common repohook objects/constants."""
 
-from __future__ import print_function
-
-import collections
+from typing import NamedTuple
 
 
-# An object representing the git project that we're testing currently.
-Project = collections.namedtuple('Project', ['name', 'dir', 'remote'])
+class Project(NamedTuple):
+    """The git project that we're testing currently."""
+
+    # The name of the project.
+    name: str
+
+    # Absolute path to the project checkout.
+    dir: str
