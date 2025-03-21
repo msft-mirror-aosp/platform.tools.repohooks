@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding:utf-8 -*-
 # Copyright 2016 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,10 +15,9 @@
 
 """Unittests for the shell module."""
 
-from __future__ import print_function
-
 import difflib
 import os
+from pathlib import Path
 import sys
 import unittest
 
@@ -43,8 +41,8 @@ class DiffTestCase(unittest.TestCase):
     def _assertEqual(self, func, test_input, test_output, result):
         """Like assertEqual but with built in diff support."""
         diff = '\n'.join(list(self.differ.compare([test_output], [result])))
-        msg = ('Expected %s to translate %r to %r, but got %r\n%s' %
-               (func, test_input, test_output, result, diff))
+        msg = (f'Expected {func} to translate {test_input!r} to '
+               f'{test_output!r}, but got {result!r}\n{diff}')
         self.assertEqual(test_output, result, msg)
 
     def _testData(self, functor, tests, check_type=True):
@@ -61,15 +59,15 @@ class DiffTestCase(unittest.TestCase):
 
 
 class ShellQuoteTest(DiffTestCase):
-    """Test the shell_quote & shell_unquote functions."""
+    """Test the quote & unquote functions."""
 
     def testShellQuote(self):
         """Basic ShellQuote tests."""
         # Dict of expected output strings to input lists.
         tests_quote = {
             "''": '',
-            'a': u'a',
-            "'a b c'": u'a b c',
+            'a': 'a',
+            "'a b c'": 'a b c',
             "'a\tb'": 'a\tb',
             "'/a$file'": '/a$file',
             "'/a#file'": '/a#file',
@@ -88,14 +86,26 @@ class ShellQuoteTest(DiffTestCase):
         }
 
         def aux(s):
-            return rh.shell.shell_unquote(rh.shell.shell_quote(s))
+            return rh.shell.unquote(rh.shell.quote(s))
 
-        self._testData(rh.shell.shell_quote, tests_quote)
-        self._testData(rh.shell.shell_unquote, tests_unquote)
+        self._testData(rh.shell.quote, tests_quote)
+        self._testData(rh.shell.unquote, tests_unquote)
 
         # Test that the operations are reversible.
         self._testData(aux, {k: k for k in tests_quote.values()}, False)
         self._testData(aux, {k: k for k in tests_quote}, False)
+
+    def testPathlib(self):
+        """Verify pathlib is handled."""
+        self.assertEqual(rh.shell.quote(Path('/')), '/')
+
+    def testBadInputs(self):
+        """Verify bad inputs do not crash."""
+        for arg, exp in (
+            (1234, '1234'),
+            (Exception('hi'), "Exception('hi')"),
+        ):
+            self.assertEqual(rh.shell.quote(arg), exp)
 
 
 class CmdToStrTest(DiffTestCase):
@@ -108,7 +118,7 @@ class CmdToStrTest(DiffTestCase):
             r"'a b' c": ['a b', 'c'],
             r'''a "b'c"''': ['a', "b'c"],
             r'''a "/'\$b" 'a b c' "xy'z"''':
-                [u'a', "/'$b", 'a b c', "xy'z"],
+                ['a', "/'$b", 'a b c', "xy'z"],
             '': [],
         }
         self._testData(rh.shell.cmd_to_str, tests)
