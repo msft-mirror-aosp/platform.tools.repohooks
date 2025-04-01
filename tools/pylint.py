@@ -18,12 +18,13 @@
 import argparse
 import errno
 import os
-import shutil
 import sys
 import subprocess
 from typing import Dict, List, Optional, Set
 
 
+# This script is run by repohooks users.
+# See README.md for what version we may require.
 assert (sys.version_info.major, sys.version_info.minor) >= (3, 6), (
     f'Python 3.6 or newer is required; found {sys.version}')
 
