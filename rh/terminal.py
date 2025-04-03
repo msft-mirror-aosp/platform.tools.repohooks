@@ -19,6 +19,7 @@ This module handles terminal interaction including ANSI color codes.
 
 import os
 import sys
+from typing import List, Optional
 
 _path = os.path.realpath(__file__ + '/../..')
 if sys.path[0] != _path:
@@ -29,6 +30,12 @@ del _path
 import rh.shell
 
 
+# This will erase all content in the current line after the cursor.  This is
+# useful for partial updates & progress messages as the terminal can display
+# it better.
+CSI_ERASE_LINE_AFTER = '\x1b[K'
+
+
 class Color(object):
     """Conditionally wraps text in ANSI color escape sequences."""
 
@@ -36,7 +43,7 @@ class Color(object):
     BOLD = -1
     COLOR_START = '\033[1;%dm'
     BOLD_START = '\033[1m'
-    RESET = '\033[0m'
+    RESET = '\033[m'
 
     def __init__(self, enabled=None):
         """Create a new Color object, optionally disabling color output.
@@ -51,7 +58,7 @@ class Color(object):
         """Returns a start color code.
 
         Args:
-          color: Color to use, .e.g BLACK, RED, etc.
+          color: Color to use, e.g. BLACK, RED, etc...
 
         Returns:
           If color is enabled, returns an ANSI sequence to start the given
@@ -99,23 +106,8 @@ class Color(object):
                 self._enabled = not rh.shell.boolean_shell_value(
                     os.environ['NOCOLOR'], False)
             else:
-                self._enabled = is_tty(sys.stderr)
+                self._enabled = sys.stderr.isatty()
         return self._enabled
-
-
-def is_tty(fh):
-    """Returns whether the specified file handle is a TTY.
-
-    Args:
-      fh: File handle to check.
-
-    Returns:
-      True if |fh| is a TTY
-    """
-    try:
-        return os.isatty(fh.fileno())
-    except IOError:
-        return False
 
 
 def print_status_line(line, print_newline=False):
@@ -125,8 +117,8 @@ def print_status_line(line, print_newline=False):
       line: String to print.
       print_newline: Print a newline at the end, if sys.stderr is a TTY.
     """
-    if is_tty(sys.stderr):
-        output = '\r' + line + '\x1B[K'
+    if sys.stderr.isatty():
+        output = '\r' + line + CSI_ERASE_LINE_AFTER
         if print_newline:
             output += '\n'
     else:
@@ -134,6 +126,34 @@ def print_status_line(line, print_newline=False):
 
     sys.stderr.write(output)
     sys.stderr.flush()
+
+
+def str_prompt(
+    prompt: str,
+    choices: List[str],
+    lower: bool = True,
+) -> Optional[str]:
+    """Helper function for processing user input.
+
+    Args:
+        prompt: The question to present to the user.
+        lower: Whether to lowercase the response.
+
+    Returns:
+        The string the user entered, or None if EOF (e.g. Ctrl+D).
+    """
+    prompt = f'{prompt} ({"/".join(choices)})? '
+    try:
+        result = input(prompt)
+        return result.lower() if lower else result
+    except EOFError:
+        # If the user hits Ctrl+D, or stdin is disabled, use the default.
+        print()
+        return None
+    except KeyboardInterrupt:
+        # If the user hits Ctrl+C, just exit the process.
+        print()
+        raise
 
 
 def boolean_prompt(prompt='Do you want to continue?', default=True,
@@ -161,23 +181,12 @@ def boolean_prompt(prompt='Do you want to continue?', default=True,
     else:
         false_text = false_text[0].upper() + false_text[1:]
 
-    prompt = f'\n{prompt} ({true_text}/{false_text})? '
-
     if prolog:
         prompt = f'\n{prolog}\n{prompt}'
+    prompt = '\n' + prompt
 
     while True:
-        try:
-            response = input(prompt).lower()  # pylint: disable=bad-builtin
-        except EOFError:
-            # If the user hits CTRL+D, or stdin is disabled, use the default.
-            print()
-            response = None
-        except KeyboardInterrupt:
-            # If the user hits CTRL+C, just exit the process.
-            print()
-            raise
-
+        response = str_prompt(prompt, choices=(true_text, false_text))
         if not response:
             return default
         if true_value.startswith(response):

@@ -14,8 +14,14 @@
 
 """Common repohook objects/constants."""
 
-import collections
+from typing import NamedTuple
 
 
-# An object representing the git project that we're testing currently.
-Project = collections.namedtuple('Project', ['name', 'dir', 'remote'])
+class Project(NamedTuple):
+    """The git project that we're testing currently."""
+
+    # The name of the project.
+    name: str
+
+    # Absolute path to the project checkout.
+    dir: str
