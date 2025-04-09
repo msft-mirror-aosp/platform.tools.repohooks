@@ -37,37 +37,20 @@ import rh.git
 # Spaces and comment identifiers in different languages are allowed at the
 # beginning of each line.
 AOSP_LICENSE_HEADER = (
-    r"""[ ~#/\*]*Copyright \(C\) 20\d\d The Android Open Source Project
-[ ~#/\*]*\n?[ ~#/\*]*Licensed under the Apache License, Version 2.0 """
-   r"""\(the "License"\);
-[ ~#/\*]*you may not use this file except in compliance with the License\.
-[ ~#/\*]*You may obtain a copy of the License at
-[ ~#/\*]*
-[ ~#/\*]*http://www\.apache\.org/licenses/LICENSE-2\.0
-[ ~#/\*]*
-[ ~#/\*]*Unless required by applicable law or agreed to in writing, software
-[ ~#/\*]*distributed under the License is distributed on an "AS IS" BASIS,
-[ ~#/\*]*WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or """
+    r"""[ #/\*]*Copyright \(C\) 20\d\d The Android Open Source Project
+[ #/\*]*\n?[ #/\*]*Licensed under the Apache License, Version 2.0 """
+    r"""\(the "License"\);
+[ #/\*]*you may not use this file except in compliance with the License\.
+[ #/\*]*You may obtain a copy of the License at
+[ #/\*]*
+[ #/\*]*http://www\.apache\.org/licenses/LICENSE-2\.0
+[ #/\*]*
+[ #/\*]*Unless required by applicable law or agreed to in writing, software
+[ #/\*]*distributed under the License is distributed on an "AS IS" BASIS,
+[ #/\*]*WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or """
     r"""implied\.
-[ ~#/\*]*See the License for the specific language governing permissions and
-[ ~#/\*]*limitations under the License\.
-"""
-)
-
-
-XML_HEADER = (
-    r"""^<\?xml version="1.0" encoding="utf-8"\?>"""
-)
-
-
-XML_COMMENT_START = (
-r"""\n<!--
-"""
-)
-
-
-XML_COMMENT_END = (
-"""[ ]*-->
+[ #/\*]*See the License for the specific language governing permissions and
+[ #/\*]*limitations under the License\.
 """
 )
 
@@ -75,25 +58,11 @@ XML_COMMENT_END = (
 LICENSE_RE = re.compile(AOSP_LICENSE_HEADER, re.MULTILINE)
 
 
-XML_HEADER_RE = re.compile(
-    XML_HEADER,
-    re.MULTILINE,
-)
-
-
-XML_LICENSE_CONTENT_RE = re.compile(
-    XML_HEADER + XML_COMMENT_START + AOSP_LICENSE_HEADER + XML_COMMENT_END,
-    re.MULTILINE,
-)
-
-
 AOSP_LICENSE_SUBSTR = 'Licensed under the Apache License'
 
 
 def check_license(contents: str) -> bool:
     """Verifies the AOSP license/copyright header."""
-    if XML_HEADER_RE.search(contents):
-        return XML_LICENSE_CONTENT_RE.search(contents)
     return LICENSE_RE.search(contents) is not None
 
 
