@@ -134,6 +134,11 @@ class Placeholders(object):
         return os.environ.get('REPO_PATH', '')
 
     @property
+    def var_REPO_PROJECT(self):
+        """The name of the project"""
+        return os.environ.get('REPO_PROJECT', '')
+
+    @property
     def var_REPO_ROOT(self):
         """The root of the repo (sub-manifest) checkout."""
         return rh.git.find_repo_root()
@@ -338,6 +343,46 @@ def check_custom(project, commit, _desc, diff, options=None, **kwargs):
                       **kwargs)
 
 
+def check_aosp_license(project, commit, _desc, diff, options=None):
+    """Checks that if all new added files has AOSP licenses"""
+
+    exclude_dir_args = [x for x in options.args()
+                        if x.startswith('--exclude-dirs=')]
+    exclude_dirs = [x[len('--exclude-dirs='):].split(',')
+                    for x in exclude_dir_args]
+    exclude_list = [fr'^{x}/.*$' for dir_list in exclude_dirs for x in dir_list]
+
+    # Filter diff based on extension.
+    extensions = frozenset((
+        # Coding languages and scripts.
+        'c',
+        'cc',
+        'cpp',
+        'h',
+        'java',
+        'kt',
+        'rs',
+        'py',
+        'sh',
+
+        # Build and config files.
+        'bp',
+        'mk',
+        'xml',
+    ))
+    diff = _filter_diff(diff, [r'\.(' + '|'.join(extensions) + r')$'], exclude_list)
+
+    # Only check the new-added files.
+    diff = [d for d in diff if d.status == 'A']
+
+    if not diff:
+        return None
+
+    cmd = [get_helper_path('check_aosp_license.py'), '--commit-hash', commit]
+    cmd += HookOptions.expand_vars(('${PREUPLOAD_FILES}',), diff)
+    return _check_cmd('aosp_license', project, commit, cmd)
+
+
 def check_bpfmt(project, commit, _desc, diff, options=None):
     """Checks that Blueprint files are formatted with bpfmt."""
     filtered = _filter_diff(diff, [r'\.bp$'])
@@ -346,15 +391,17 @@ def check_bpfmt(project, commit, _desc, diff, options=None):
 
     bpfmt = options.tool_path('bpfmt')
     bpfmt_options = options.args((), filtered)
-    cmd = [bpfmt, '-l'] + bpfmt_options
+    cmd = [bpfmt, '-d'] + bpfmt_options
+    fixup_cmd = [bpfmt, '-w']
+    if '-s' in bpfmt_options:
+        fixup_cmd.append('-s')
+    fixup_cmd.append('--')
+
     ret = []
     for d in filtered:
         data = rh.git.get_file_content(commit, d.file)
         result = _run(cmd, input=data)
         if result.stdout:
-            fixup_cmd = [bpfmt, '-w']
-            if '-s' in bpfmt_options:
-                fixup_cmd.append('-s')
             ret.append(rh.results.HookResult(
                 'bpfmt', project, commit,
                 error=result.stdout,
@@ -388,17 +435,35 @@ def check_clang_format(project, commit, _desc, diff, options=None):
 
 def check_google_java_format(project, commit, _desc, _diff, options=None):
     """Run google-java-format on the commit."""
+    include_dir_args = [x for x in options.args()
+                        if x.startswith('--include-dirs=')]
+    include_dirs = [x[len('--include-dirs='):].split(',')
+                    for x in include_dir_args]
+    patterns = [fr'^{x}/.*\.java$' for dir_list in include_dirs
+                for x in dir_list]
+    if not patterns:
+        patterns = [r'\.java$']
+
+    filtered = _filter_diff(_diff, patterns)
+
+    if not filtered:
+        return None
+
+    args = [x for x in options.args() if x not in include_dir_args]
 
     tool = get_helper_path('google-java-format.py')
     google_java_format = options.tool_path('google-java-format')
     google_java_format_diff = options.tool_path('google-java-format-diff')
     tool_args = ['--google-java-format', google_java_format,
                  '--google-java-format-diff', google_java_format_diff,
-                 '--commit', commit] + options.args()
-    cmd = [tool] + tool_args
+                 '--commit', commit] + args
+    cmd = [tool] + tool_args + HookOptions.expand_vars(
+                   ('${PREUPLOAD_FILES}',), filtered)
     fixup_cmd = [tool, '--fix'] + tool_args
-    return _check_cmd('google-java-format', project, commit, cmd,
-                      fixup_cmd=fixup_cmd)
+    return [rh.results.HookCommandResult('google-java-format', project, commit,
+                                         _run(cmd),
+                                         files=[x.file for x in filtered],
+                                         fixup_cmd=fixup_cmd)]
 
 
 def check_ktfmt(project, commit, _desc, diff, options=None):
@@ -433,9 +498,9 @@ def check_ktfmt(project, commit, _desc, diff, options=None):
 
 
 def check_commit_msg_bug_field(project, commit, desc, _diff, options=None):
-    """Check the commit message for a 'Bug:' line."""
+    """Check the commit message for a 'Bug:' or 'Fix:' line."""
     field = 'Bug'
-    regex = fr'^{field}: (None|[0-9]+(, [0-9]+)*)$'
+    regex = r'^(Bug|Fix): (None|[0-9]+(, [0-9]+)*)$'
     check_re = re.compile(regex)
 
     if options.args():
@@ -911,15 +976,22 @@ def _check_pylint(project, commit, _desc, diff, extra_args=None, options=None):
 
 
 def check_pylint2(project, commit, desc, diff, options=None):
-    """Run pylint through Python 2."""
-    return _check_pylint(project, commit, desc, diff, options=options)
+    """Run pylint through Python 2.
+
+    This hook is not supported anymore, but we keep it registered to avoid
+    breaking in older branches with old configs that still have it.
+    """
+    del desc, diff, options
+    return [rh.results.HookResult(
+        'pylint2', project, commit,
+        ('The pylint2 check is no longer supported.  '
+         'Please delete from PREUPLOAD.cfg.'),
+        warning=True)]
 
 
 def check_pylint3(project, commit, desc, diff, options=None):
     """Run pylint through Python 3."""
-    return _check_pylint(project, commit, desc, diff,
-                         extra_args=['--py3'],
-                         options=options)
+    return _check_pylint(project, commit, desc, diff, options=options)
 
 
 def check_rustfmt(project, commit, _desc, diff, options=None):
@@ -1036,6 +1108,7 @@ def check_aidl_format(project, commit, _desc, diff, options=None):
 BUILTIN_HOOKS = {
     'aidl_format': check_aidl_format,
     'android_test_mapping_format': check_android_test_mapping,
+    'aosp_license': check_aosp_license,
     'bpfmt': check_bpfmt,
     'checkpatch': check_checkpatch,
     'clang_format': check_clang_format,
@@ -1051,7 +1124,7 @@ BUILTIN_HOOKS = {
     'google_java_format': check_google_java_format,
     'jsonlint': check_json,
     'ktfmt': check_ktfmt,
-    'pylint': check_pylint2,
+    'pylint': check_pylint3,
     'pylint2': check_pylint2,
     'pylint3': check_pylint3,
     'rustfmt': check_rustfmt,
