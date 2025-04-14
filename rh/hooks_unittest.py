@@ -20,6 +20,8 @@ import sys
 import unittest
 from unittest import mock
 
+import pytest
+
 _path = os.path.realpath(__file__ + '/../..')
 if sys.path[0] != _path:
     sys.path.insert(0, _path)
@@ -235,6 +237,7 @@ class ExclusionScopeTests(unittest.TestCase):
 class HookOptionsTests(unittest.TestCase):
     """Verify behavior of HookOptions object."""
 
+    @pytest.mark.skip_cq("TODO: Relies on .repo dir")
     @mock.patch.object(rh.hooks, '_get_build_os_name', return_value='vapier os')
     def testExpandVars(self, m):
         """Verify expand_vars behavior."""
@@ -247,6 +250,7 @@ class HookOptionsTests(unittest.TestCase):
         exp_args = ['who', 'goes', 'there ?', f'{m.return_value} is great']
         self.assertEqual(exp_args, rh.hooks.HookOptions.expand_vars(args))
 
+    @pytest.mark.skip_cq("TODO: Relies on .repo dir")
     def testArgs(self):
         """Verify args behavior."""
         # Verify initial args to __init__ has higher precedent.
@@ -261,6 +265,7 @@ class HookOptionsTests(unittest.TestCase):
         self.assertEqual(options.args(), [])
         self.assertEqual(options.args(default_args=args), args)
 
+    @pytest.mark.skip_cq("TODO: Relies on .repo dir")
     def testToolPath(self):
         """Verify tool_path behavior."""
         options = rh.hooks.HookOptions('hook name', [], {
@@ -414,6 +419,21 @@ class BuiltinHooksTests(unittest.TestCase):
         )
         self.assertIsNotNone(ret)
 
+    def test_black(self, mock_check, _mock_run):
+        """Verify the black builtin hook."""
+        # First call should do nothing as there are no files to check.
+        ret = rh.hooks.check_black(
+            self.project, 'commit', 'desc', (), options=self.options)
+        self.assertIsNone(ret)
+        self.assertFalse(mock_check.called)
+
+        # Second call will have some results.
+        diff = [rh.git.RawDiffEntry(file='main.py')]
+        ret = rh.hooks.check_black(
+            self.project, 'commit', 'desc', diff, options=self.options)
+        self.assertIsNotNone(ret)
+        for result in ret:
+            self.assertIsNotNone(result.fixup_cmd)
 
     def test_bpfmt(self, mock_check, _mock_run):
         """Verify the bpfmt builtin hook."""
@@ -911,13 +931,15 @@ class BuiltinHooksTests(unittest.TestCase):
 
     def test_pylint(self, mock_check, _mock_run):
         """Verify the pylint builtin hook."""
-        self._test_file_filter(mock_check, rh.hooks.check_pylint2,
+        self._test_file_filter(mock_check, rh.hooks.check_pylint3,
                                ('foo.py',))
 
     def test_pylint2(self, mock_check, _mock_run):
         """Verify the pylint2 builtin hook."""
-        self._test_file_filter(mock_check, rh.hooks.check_pylint2,
-                               ('foo.py',))
+        ret = rh.hooks.check_pylint2(
+            self.project, 'commit', 'desc', (), options=self.options)
+        self.assertEqual(len(ret), 1)
+        self.assertTrue(ret[0].is_warning())
 
     def test_pylint3(self, mock_check, _mock_run):
         """Verify the pylint3 builtin hook."""
