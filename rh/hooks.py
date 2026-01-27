@@ -527,9 +527,9 @@ def check_ktfmt(project, commit, _desc, diff, options=None):
         error = (
             f'\nKotlin files need formatting.\n'
             'To reformat the kotlin files in this commit:\n'
-            f'{ktfmt} {" ".join(paths)}'
+            f'{ktfmt} {" ".join(args)} {" ".join(paths)}'
         )
-        fixup_func = _fixup_func_caller([ktfmt] + paths)
+        fixup_func = _fixup_func_caller([ktfmt] + args + paths)
         return [rh.results.HookResult('ktfmt', project, commit, error=error,
                                       files=paths, fixup_func=fixup_func)]
     return None
