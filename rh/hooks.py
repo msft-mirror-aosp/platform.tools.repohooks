@@ -497,30 +497,40 @@ def check_ktfmt(project, commit, _desc, diff, options=None):
                         if x.startswith('--include-dirs=')]
     include_dirs = [x[len('--include-dirs='):].split(',')
                     for x in include_dir_args]
-    patterns = [fr'^{x}/.*\.kt$' for dir_list in include_dirs
-                for x in dir_list]
-    if not patterns:
-        patterns = [r'\.kt$']
+    exclude_dir_args = [x for x in options.args()
+                        if x.startswith('--exclude-dirs=')]
+    exclude_dirs = [x[len('--exclude-dirs='):].split(',')
+                    for x in exclude_dir_args]
 
-    filtered = _filter_diff(diff, patterns)
+    include_patterns = [fr'^{x}/.*\.kt$' for dir_list in include_dirs
+                        for x in dir_list]
+    if not include_patterns:
+        include_patterns = [r'\.kt$']
+
+    exclude_patterns = [fr'^{x}/' for dir_list in exclude_dirs
+                        for x in dir_list]
+
+    filtered = _filter_diff(diff, include_patterns, exclude_patterns)
 
     if not filtered:
         return None
 
-    args = [x for x in options.args() if x not in include_dir_args]
+    args = [x for x in options.args() if x not in include_dir_args
+            and x not in exclude_dir_args]
 
     ktfmt = options.tool_path('ktfmt')
     cmd = [ktfmt, '--dry-run'] + args + HookOptions.expand_vars(
         ('${PREUPLOAD_FILES}',), filtered)
-    result = _run(cmd)
+    result = _run(cmd, combine_stdout_stderr = False,
+        capture_output = False, redirect_stdout = True)
     if result.stdout:
         paths = [os.path.join(project.dir, x.file) for x in filtered]
         error = (
             f'\nKotlin files need formatting.\n'
             'To reformat the kotlin files in this commit:\n'
-            f'{ktfmt} {" ".join(paths)}'
+            f'{ktfmt} {" ".join(args)} {" ".join(paths)}'
         )
-        fixup_func = _fixup_func_caller([ktfmt] + paths)
+        fixup_func = _fixup_func_caller([ktfmt] + args + paths)
         return [rh.results.HookResult('ktfmt', project, commit, error=error,
                                       files=paths, fixup_func=fixup_func)]
     return None
