@@ -549,9 +549,11 @@ def check_ktfmt(project, commit, _desc, diff, options=None):
     include_dirs = [
         x[len("--include-dirs=") :].split(",") for x in include_dir_args
     ]
-    patterns = [rf"^{x}/.*\.kt$" for dir_list in include_dirs for x in dir_list]
+    patterns = [
+        rf"^{x}/.*\.kts?$" for dir_list in include_dirs for x in dir_list
+    ]
     if not patterns:
-        patterns = [r"\.kt$"]
+        patterns = [r"\.kts?$"]
 
     filtered = _filter_diff(diff, patterns)
 
@@ -1303,6 +1305,7 @@ def check_alint(project, commit, _desc, diff, options=None):
 # Hooks that projects can opt into.
 # Note: Make sure to keep the top level README.md up to date when adding more!
 BUILTIN_HOOKS = {
+    # pylint: disable=line-too-long
     "aidl_format": check_aidl_format,
     "alint": check_alint,
     "android_test_mapping_format": check_android_test_mapping,
