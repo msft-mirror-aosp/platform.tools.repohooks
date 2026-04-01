@@ -16,16 +16,15 @@
 """Unittests for the hooks module."""
 
 import os
+from pathlib import Path
 import sys
 import unittest
 from unittest import mock
 
-import pytest
 
-_path = os.path.realpath(__file__ + "/../..")
-if sys.path[0] != _path:
-    sys.path.insert(0, _path)
-del _path
+THIS_FILE = Path(__file__).resolve()
+THIS_DIR = THIS_FILE.parent
+sys.path.insert(0, str(THIS_DIR.parent))
 
 # We have to import our local modules after the sys.path tweak.  We can't use
 # relative imports because this is an executable program, not a module.
@@ -48,10 +47,7 @@ class HooksDocsTests(unittest.TestCase):
     """
 
     def setUp(self):
-        self.readme = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
-            "README.md",
-        )
+        self.readme = THIS_DIR.parent / "README.md"
 
     def _grab_section(self, section):
         """Extract the |section| text out of the readme."""
@@ -266,9 +262,11 @@ class ExclusionScopeTests(unittest.TestCase):
 class HookOptionsTests(unittest.TestCase):
     """Verify behavior of HookOptions object."""
 
-    @pytest.mark.skip_cq("TODO: Relies on .repo dir")
+    @mock.patch.object(
+        rh.git, "find_repo_root", side_effect=mock_find_repo_root
+    )
     @mock.patch.object(rh.hooks, "_get_build_os_name", return_value="vapier os")
-    def testExpandVars(self, m):
+    def testExpandVars(self, m, _m):
         """Verify expand_vars behavior."""
         # Simple pass through.
         args = ["who", "goes", "there ?"]
@@ -279,8 +277,10 @@ class HookOptionsTests(unittest.TestCase):
         exp_args = ["who", "goes", "there ?", f"{m.return_value} is great"]
         self.assertEqual(exp_args, rh.hooks.HookOptions.expand_vars(args))
 
-    @pytest.mark.skip_cq("TODO: Relies on .repo dir")
-    def testArgs(self):
+    @mock.patch.object(
+        rh.git, "find_repo_root", side_effect=mock_find_repo_root
+    )
+    def testArgs(self, _m):
         """Verify args behavior."""
         # Verify initial args to __init__ has higher precedent.
         args = ["start", "args"]
@@ -294,8 +294,10 @@ class HookOptionsTests(unittest.TestCase):
         self.assertEqual(options.args(), [])
         self.assertEqual(options.args(default_args=args), args)
 
-    @pytest.mark.skip_cq("TODO: Relies on .repo dir")
-    def testToolPath(self):
+    @mock.patch.object(
+        rh.git, "find_repo_root", side_effect=mock_find_repo_root
+    )
+    def testToolPath(self, _):
         """Verify tool_path behavior."""
         options = rh.hooks.HookOptions(
             "hook name",
@@ -362,6 +364,12 @@ class BuiltinHooksTests(unittest.TestCase):
     def setUp(self):
         self.project = rh.Project(name="project-name", dir="/.../repo/dir")
         self.options = rh.hooks.HookOptions("hook name", [], {})
+        mock.patch.object(
+            rh.git, "find_repo_root", side_effect=mock_find_repo_root
+        ).start()
+
+    def tearDown(self):
+        mock.patch.stopall()
 
     def _test_commit_messages(self, func, accept, msgs, files=None):
         """Helper for testing commit message hooks.
@@ -1181,10 +1189,44 @@ class BuiltinHooksTests(unittest.TestCase):
         Test: ...
         Flag: ..."""
         diff = [rh.git.RawDiffEntry(file="file.txt", status="A")]
+
+        # Test success.
+        mock_run.return_value = rh.utils.CompletedProcess(returncode=0)
         ret = rh.hooks.check_alint(
             self.project, commit, "desc", diff, options=self.options
         )
         self.assertIsNotNone(ret)
+        self.assertIsNone(ret[0].fixup_cmd)
+
+        # Test error with fix.
+        mock_run.return_value = rh.utils.CompletedProcess(returncode=5)
+        ret = rh.hooks.check_alint(
+            self.project, commit, "desc", diff, options=self.options
+        )
+        self.assertIsNotNone(ret)
+        self.assertEqual(ret[0].fixup_cmd, ["alint", "fix", "--no_amend"])
+        self.assertFalse(ret[0].is_warning())
+        self.assertEqual(ret[0].result.returncode, 5)
+
+        # Test warning with fix.
+        mock_run.return_value = rh.utils.CompletedProcess(returncode=6)
+        ret = rh.hooks.check_alint(
+            self.project, commit, "desc", diff, options=self.options
+        )
+        self.assertIsNotNone(ret)
+        self.assertEqual(ret[0].fixup_cmd, ["alint", "fix", "--no_amend"])
+        self.assertFalse(ret[0].is_warning())
+        self.assertEqual(ret[0].result.returncode, 6)
+
+        # Test warning without fix.
+        mock_run.return_value = rh.utils.CompletedProcess(returncode=77)
+        ret = rh.hooks.check_alint(
+            self.project, commit, "desc", diff, options=self.options
+        )
+        self.assertIsNotNone(ret)
+        self.assertIsNone(ret[0].fixup_cmd)
+        self.assertTrue(ret[0].is_warning())
+        self.assertEqual(ret[0].result.returncode, 77)
 
 
 if __name__ == "__main__":

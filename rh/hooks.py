@@ -17,15 +17,16 @@
 import fnmatch
 import json
 import os
+from pathlib import Path
 import platform
 import re
 import sys
 from typing import Callable, NamedTuple
 
-_path = os.path.realpath(__file__ + "/../..")
-if sys.path[0] != _path:
-    sys.path.insert(0, _path)
-del _path
+
+THIS_FILE = Path(__file__).resolve()
+THIS_DIR = THIS_FILE.parent
+sys.path.insert(0, str(THIS_DIR.parent))
 
 # pylint: disable=wrong-import-position
 import rh.git
@@ -342,10 +343,10 @@ def _check_cmd(hook_name, project, commit, cmd, fixup_cmd=None, **kwargs):
 
 
 # Where helper programs exist.
-TOOLS_DIR = os.path.realpath(__file__ + "/../../tools")
+TOOLS_DIR = THIS_DIR.parent / "tools"
 
 
-def get_helper_path(tool):
+def get_helper_path(tool: str) -> str:
     """Return the full path to the helper |tool|."""
     return os.path.join(TOOLS_DIR, tool)
 
@@ -1299,7 +1300,20 @@ def check_alint(project, commit, _desc, diff, options=None):
 
     cmd = [alint_path] + options.args((), diff) + ["--commit", commit]
 
-    return _check_cmd("alint", project, commit, cmd)
+    result = _run(cmd)
+
+    # alint returns exit code 5 or 6 if there are findings with fixes available.
+    fixup_cmd = (
+        [alint_path, "fix", "--no_amend"]
+        if result.returncode in (5, 6)
+        else None
+    )
+
+    return [
+        rh.results.HookCommandResult(
+            "alint", project, commit, result, fixup_cmd=fixup_cmd
+        )
+    ]
 
 
 # Hooks that projects can opt into.
@@ -1337,13 +1351,13 @@ BUILTIN_HOOKS = {
 TOOL_PATHS = {
     "aidl-format": "aidl-format",
     "alint": "alint",
-    "android-test-mapping-format": os.path.join(
-        TOOLS_DIR, "android_test_mapping_format.py"
+    "android-test-mapping-format": get_helper_path(
+        "android_test_mapping_format.py"
     ),
     "black": "black",
     "bpfmt": "bpfmt",
     "clang-format": "clang-format",
-    "cpplint": os.path.join(TOOLS_DIR, "cpplint.py"),
+    "cpplint": get_helper_path("cpplint.py"),
     "git-clang-format": "git-clang-format",
     "gofmt": "gofmt",
     "google-java-format": "google-java-format",
