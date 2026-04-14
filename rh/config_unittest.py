@@ -16,15 +16,16 @@
 """Unittests for the config module."""
 
 import os
+from pathlib import Path
 import shutil
 import sys
 import tempfile
 import unittest
 
-_path = os.path.realpath(__file__ + "/../..")
-if sys.path[0] != _path:
-    sys.path.insert(0, _path)
-del _path
+
+THIS_FILE = Path(__file__).resolve()
+THIS_DIR = THIS_FILE.parent
+sys.path.insert(0, str(THIS_DIR.parent))
 
 # We have to import our local modules after the sys.path tweak.  We can't use
 # relative imports because this is an executable program, not a module.
@@ -54,7 +55,7 @@ class FileTestCase(unittest.TestCase):
         """Helper to write out a config file for testing.
 
         Returns:
-          Path to the file where the configuration was written.
+            Path to the file where the configuration was written.
         """
         path = os.path.join(self.tempdir, filename)
         with open(path, "w", encoding="utf-8") as fp:
