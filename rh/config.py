@@ -18,13 +18,14 @@ import configparser
 import functools
 import itertools
 import os
+from pathlib import Path
 import shlex
 import sys
 
-_path = os.path.realpath(__file__ + "/../..")
-if sys.path[0] != _path:
-    sys.path.insert(0, _path)
-del _path
+
+THIS_FILE = Path(__file__).resolve()
+THIS_DIR = THIS_FILE.parent
+sys.path.insert(0, str(THIS_DIR.parent))
 
 # pylint: disable=wrong-import-position
 import rh.hooks
@@ -53,8 +54,8 @@ class RawConfigParser(configparser.RawConfigParser):
         """Return the options in |section|.
 
         Args:
-          section: The section to look up.
-          default: What to return if |section| does not exist.
+            section: The section to look up.
+            default: What to return if |section| does not exist.
         """
         try:
             return configparser.RawConfigParser.options(self, section)
@@ -101,9 +102,9 @@ class PreUploadConfig(object):
         """Initialize.
 
         Args:
-          config: A configparse.ConfigParser instance.
-          source: Where this config came from. This is used in error messages to
-              facilitate debugging. It is not necessarily a valid path.
+            config: A configparse.ConfigParser instance.
+            source: Where this config came from. This is used in error messages
+                to facilitate debugging. It is not necessarily a valid path.
         """
         self.config = config if config else RawConfigParser()
         self.source = source
@@ -278,7 +279,7 @@ class PreUploadFile(PreUploadConfig):
     constant.
 
     Attributes:
-      path: The path of the file.
+        path: The path of the file.
     """
 
     FILENAME = None
@@ -287,7 +288,7 @@ class PreUploadFile(PreUploadConfig):
         """Initialize.
 
         Args:
-          path: The config file to load.
+            path: The config file to load.
         """
         super().__init__(source=path)
 
@@ -304,10 +305,10 @@ class PreUploadFile(PreUploadConfig):
         """Search for files within paths that matches the class FILENAME.
 
         Args:
-          paths: List of directories to look for config files.
+            paths: List of directories to look for config files.
 
         Yields:
-          For each valid file found, an instance is created and returned.
+            For each valid file found, an instance is created and returned.
         """
         for path in paths:
             path = os.path.join(path, cls.FILENAME)
@@ -350,8 +351,8 @@ class PreUploadSettings(PreUploadConfig):
         All the config files found will be merged together in order.
 
         Args:
-          paths: The directories to look for config files.
-          global_paths: The directories to look for global config files.
+            paths: The directories to look for config files.
+            global_paths: The directories to look for global config files.
         """
         super().__init__()
 
