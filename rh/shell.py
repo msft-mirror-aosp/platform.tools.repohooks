@@ -1,4 +1,3 @@
-# -*- coding:utf-8 -*-
 # Copyright 2016 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,15 +14,14 @@
 
 """Functions for working with shell code."""
 
-from __future__ import print_function
-
-import os
+import pathlib
+from pathlib import Path
 import sys
 
-_path = os.path.realpath(__file__ + '/../..')
-if sys.path[0] != _path:
-    sys.path.insert(0, _path)
-del _path
+
+THIS_FILE = Path(__file__).resolve()
+THIS_DIR = THIS_FILE.parent
+sys.path.insert(0, str(THIS_DIR.parent))
 
 
 # For use by ShellQuote.  Match all characters that the shell might treat
@@ -35,13 +33,13 @@ del _path
 # See the bash man page as well as the POSIX shell documentation for more info:
 #   http://www.gnu.org/software/bash/manual/bashref.html
 #   http://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html
-_SHELL_QUOTABLE_CHARS = frozenset('[|&;()<> \t!{}[]=*?~$"\'\\#^')
+_SHELL_QUOTABLE_CHARS = frozenset("[|&;()<> \t!{}[]=*?~$\"'\\#^")
 # The chars that, when used inside of double quotes, need escaping.
 # Order here matters as we need to escape backslashes first.
-_SHELL_ESCAPE_CHARS = r'\"`$'
+_SHELL_ESCAPE_CHARS = r"\"`$"
 
 
-def shell_quote(s):
+def quote(s):
     """Quote |s| in a way that is safe for use in a shell.
 
     We aim to be safe, but also to produce "nice" output.  That means we don't
@@ -63,49 +61,52 @@ def shell_quote(s):
     run real programs and not shell ones.
 
     Args:
-      s: The string to quote.
+        s: The string to quote.
 
     Returns:
-      A safely (possibly quoted) string.
+        A safely (possibly quoted) string.
     """
-    s = s.encode('utf-8')
+    # If callers pass down bad types, don't blow up.
+    if isinstance(s, bytes):
+        s = s.encode("utf-8")
+    elif isinstance(s, pathlib.PurePath):
+        return str(s)
+    elif not isinstance(s, str):
+        return repr(s)
 
     # See if no quoting is needed so we can return the string as-is.
     for c in s:
         if c in _SHELL_QUOTABLE_CHARS:
             break
     else:
-        if not s:
-            return "''"
-        else:
-            return s
+        return s if s else "''"
 
     # See if we can use single quotes first.  Output is nicer.
     if "'" not in s:
-        return "'%s'" % s
+        return f"'{s}'"
 
     # Have to use double quotes.  Escape the few chars that still expand when
     # used inside of double quotes.
     for c in _SHELL_ESCAPE_CHARS:
         if c in s:
-            s = s.replace(c, r'\%s' % c)
-    return '"%s"' % s
+            s = s.replace(c, rf"\{c}")
+    return f'"{s}"'
 
 
-def shell_unquote(s):
+def unquote(s):
     """Do the opposite of ShellQuote.
 
     This function assumes that the input is a valid escaped string.
     The behaviour is undefined on malformed strings.
 
     Args:
-      s: An escaped string.
+        s: An escaped string.
 
     Returns:
-      The unescaped version of the string.
+        The unescaped version of the string.
     """
     if not s:
-        return ''
+        return ""
 
     if s[0] == "'":
         return s[1:-1]
@@ -114,11 +115,11 @@ def shell_unquote(s):
         return s
 
     s = s[1:-1]
-    output = ''
+    output = ""
     i = 0
     while i < len(s) - 1:
         # Skip the backslash when it makes sense.
-        if s[i] == '\\' and s[i + 1] in _SHELL_ESCAPE_CHARS:
+        if s[i] == "\\" and s[i + 1] in _SHELL_ESCAPE_CHARS:
             i += 1
         output += s[i]
         i += 1
@@ -133,21 +134,21 @@ def cmd_to_str(cmd):
     quotes to keep them grouped, even if an argument has spaces in it.
 
     Examples:
-      ['a', 'b'] ==> "'a' 'b'"
-      ['a b', 'c'] ==> "'a b' 'c'"
-      ['a', 'b\'c'] ==> '\'a\' "b\'c"'
-      [u'a', "/'$b"] ==> '\'a\' "/\'$b"'
-      [] ==> ''
-      See unittest for additional (tested) examples.
+        ['a', 'b'] ==> "'a' 'b'"
+        ['a b', 'c'] ==> "'a b' 'c'"
+        ['a', 'b\'c'] ==> '\'a\' "b\'c"'
+        [u'a', "/'$b"] ==> '\'a\' "/\'$b"'
+        [] ==> ''
+        See unittest for additional (tested) examples.
 
     Args:
-      cmd: List of command arguments.
+        cmd: List of command arguments.
 
     Returns:
-      String representing full command.
+        String representing full command.
     """
     # Use str before repr to translate unicode strings to regular strings.
-    return ' '.join(shell_quote(arg) for arg in cmd)
+    return " ".join(quote(arg) for arg in cmd)
 
 
 def boolean_shell_value(sval, default):
@@ -155,11 +156,11 @@ def boolean_shell_value(sval, default):
     if sval is None:
         return default
 
-    if isinstance(sval, basestring):
+    if isinstance(sval, str):
         s = sval.lower()
-        if s in ('yes', 'y', '1', 'true'):
+        if s in ("yes", "y", "1", "true"):
             return True
-        elif s in ('no', 'n', '0', 'false'):
+        if s in ("no", "n", "0", "false"):
             return False
 
-    raise ValueError('Could not decode as a boolean value: %r' % (sval,))
+    raise ValueError(f"Could not decode as a boolean value: {sval!r}")
