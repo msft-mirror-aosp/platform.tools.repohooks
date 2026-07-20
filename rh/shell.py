@@ -14,9 +14,10 @@
 
 """Functions for working with shell code."""
 
-from pathlib import Path
 import pathlib
+from pathlib import Path
 import sys
+from typing import Iterable, Optional, Union
 
 
 THIS_FILE = Path(__file__).resolve()
@@ -39,7 +40,10 @@ _SHELL_QUOTABLE_CHARS = frozenset("[|&;()<> \t!{}[]=*?~$\"'\\#^")
 _SHELL_ESCAPE_CHARS = r"\"`$"
 
 
-def quote(s):
+_SHELL_QUOTABLE_T = Union[bytes, str, Path]
+
+
+def quote(s: _SHELL_QUOTABLE_T) -> str:
     """Quote |s| in a way that is safe for use in a shell.
 
     We aim to be safe, but also to produce "nice" output.  That means we don't
@@ -61,14 +65,14 @@ def quote(s):
     run real programs and not shell ones.
 
     Args:
-      s: The string to quote.
+        s: The string to quote.
 
     Returns:
-      A safely (possibly quoted) string.
+        A safely (possibly quoted) string.
     """
     # If callers pass down bad types, don't blow up.
     if isinstance(s, bytes):
-        s = s.encode("utf-8")
+        s = s.decode("utf-8")
     elif isinstance(s, pathlib.PurePath):
         return str(s)
     elif not isinstance(s, str):
@@ -93,17 +97,17 @@ def quote(s):
     return f'"{s}"'
 
 
-def unquote(s):
+def unquote(s: str) -> str:
     """Do the opposite of ShellQuote.
 
     This function assumes that the input is a valid escaped string.
     The behaviour is undefined on malformed strings.
 
     Args:
-      s: An escaped string.
+        s: An escaped string.
 
     Returns:
-      The unescaped version of the string.
+        The unescaped version of the string.
     """
     if not s:
         return ""
@@ -126,7 +130,7 @@ def unquote(s):
     return output + s[i] if i < len(s) else output
 
 
-def cmd_to_str(cmd):
+def cmd_to_str(cmd: Iterable[_SHELL_QUOTABLE_T]) -> str:
     """Translate a command list into a space-separated string.
 
     The resulting string should be suitable for logging messages and for
@@ -134,24 +138,24 @@ def cmd_to_str(cmd):
     quotes to keep them grouped, even if an argument has spaces in it.
 
     Examples:
-      ['a', 'b'] ==> "'a' 'b'"
-      ['a b', 'c'] ==> "'a b' 'c'"
-      ['a', 'b\'c'] ==> '\'a\' "b\'c"'
-      [u'a', "/'$b"] ==> '\'a\' "/\'$b"'
-      [] ==> ''
-      See unittest for additional (tested) examples.
+        ['a', 'b'] ==> "'a' 'b'"
+        ['a b', 'c'] ==> "'a b' 'c'"
+        ['a', 'b\'c'] ==> '\'a\' "b\'c"'
+        [u'a', "/'$b"] ==> '\'a\' "/\'$b"'
+        [] ==> ''
+        See unittest for additional (tested) examples.
 
     Args:
-      cmd: List of command arguments.
+        cmd: List of command arguments.
 
     Returns:
-      String representing full command.
+        String representing full command.
     """
     # Use str before repr to translate unicode strings to regular strings.
     return " ".join(quote(arg) for arg in cmd)
 
 
-def boolean_shell_value(sval, default):
+def boolean_shell_value(sval: Optional[str], default: bool) -> bool:
     """See if |sval| is a value users typically consider as boolean."""
     if sval is None:
         return default

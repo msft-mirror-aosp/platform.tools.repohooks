@@ -30,8 +30,8 @@ sys.path.insert(0, str(THIS_DIR.parent))
 # We have to import our local modules after the sys.path tweak.  We can't use
 # relative imports because this is an executable program, not a module.
 # pylint: disable=wrong-import-position
-import rh.hooks
 import rh.config
+import rh.hooks
 
 
 class PreUploadConfigTests(unittest.TestCase):
@@ -55,7 +55,7 @@ class FileTestCase(unittest.TestCase):
         """Helper to write out a config file for testing.
 
         Returns:
-          Path to the file where the configuration was written.
+            Path to the file where the configuration was written.
         """
         path = os.path.join(self.tempdir, filename)
         with open(path, "w", encoding="utf-8") as fp:
