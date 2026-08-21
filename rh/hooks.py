@@ -519,11 +519,11 @@ def check_ktfmt(project, commit, _desc, diff, options=None):
             and x not in exclude_dir_args]
 
     ktfmt = options.tool_path('ktfmt')
-    cmd = [ktfmt, '--dry-run'] + args + HookOptions.expand_vars(
+    cmd = [ktfmt, '--dry-run', '--set-exit-if-changed'] + args + HookOptions.expand_vars(
         ('${PREUPLOAD_FILES}',), filtered)
     result = _run(cmd, combine_stdout_stderr = False,
         capture_output = False, redirect_stdout = True)
-    if result.stdout:
+    if result.returncode == 1:
         paths = [os.path.join(project.dir, x.file) for x in filtered]
         error = (
             f'\nKotlin files need formatting.\n'
