@@ -17,15 +17,16 @@
 import fnmatch
 import json
 import os
+from pathlib import Path
 import platform
 import re
 import sys
 from typing import Callable, NamedTuple
 
-_path = os.path.realpath(__file__ + "/../..")
-if sys.path[0] != _path:
-    sys.path.insert(0, _path)
-del _path
+
+THIS_FILE = Path(__file__).resolve()
+THIS_DIR = THIS_FILE.parent
+sys.path.insert(0, str(THIS_DIR.parent))
 
 # pylint: disable=wrong-import-position
 import rh.git
@@ -49,7 +50,7 @@ class Placeholders(object):
         """Initialize.
 
         Args:
-          diff: The list of files that changed.
+            diff: The list of files that changed.
         """
         self.diff = diff
 
@@ -57,10 +58,10 @@ class Placeholders(object):
         """Perform place holder expansion on all of |args|.
 
         Args:
-          args: The args to perform expansion on.
+            args: The args to perform expansion on.
 
         Returns:
-          The updated |args| list.
+            The updated |args| list.
         """
         all_vars = set(self.vars())
         replacements = dict((var, self.get(var)) for var in all_vars)
@@ -172,8 +173,8 @@ class ExclusionScope(object):
         """Initialize.
 
         Args:
-          scope: A list of shell-style wildcards (fnmatch) or regular
-              expression. Regular expressions must start with the ^ character.
+            scope: A list of shell-style wildcards (fnmatch) or regular
+                expression. Regular expressions must start with the ^ character.
         """
         self._scope = []
         for path in scope:
@@ -186,7 +187,7 @@ class ExclusionScope(object):
         """Checks if |proj_dir| matches the excluded paths.
 
         Args:
-          proj_dir: The relative path of the project.
+            proj_dir: The relative path of the project.
         """
         for exclusion_path in self._scope:
             if hasattr(exclusion_path, "match"):
@@ -204,9 +205,9 @@ class HookOptions(object):
         """Initialize.
 
         Args:
-          name: The name of the hook.
-          args: The override commandline arguments for the hook.
-          tool_paths: A dictionary with tool names to paths.
+            name: The name of the hook.
+            args: The override commandline arguments for the hook.
+            tool_paths: A dictionary with tool names to paths.
         """
         self.name = name
         self._args = args
@@ -222,11 +223,11 @@ class HookOptions(object):
         """Gets the hook arguments, after performing place holder expansion.
 
         Args:
-          default_args: The list to return if |self._args| is empty.
-          diff: The list of files that changed in the current commit.
+            default_args: The list to return if |self._args| is empty.
+            diff: The list of files that changed in the current commit.
 
         Returns:
-          A list with arguments.
+            A list with arguments.
         """
         args = self._args
         if not args:
@@ -242,10 +243,10 @@ class HookOptions(object):
         name will be returned and will be run from the user's $PATH.
 
         Args:
-          tool_name: The name of the executable.
+            tool_name: The name of the executable.
 
         Returns:
-          The path of the tool with all optional place holders expanded.
+            The path of the tool with all optional place holders expanded.
         """
         assert tool_name in TOOL_PATHS
         if tool_name not in self._tool_paths:
@@ -278,11 +279,12 @@ def _match_regex_list(subject, expressions):
     """Try to match a list of regular expressions to a string.
 
     Args:
-      subject: The string to match regexes on.
-      expressions: An iterable of regular expressions to check for matches with.
+        subject: The string to match regexes on.
+        expressions: An iterable of regular expressions to check for matches
+            with.
 
     Returns:
-      Whether the passed in subject matches any of the passed in regexes.
+        Whether the passed in subject matches any of the passed in regexes.
     """
     for expr in expressions:
         if re.search(expr, subject):
@@ -294,17 +296,17 @@ def _filter_diff(diff, include_list, exclude_list=()):
     """Filter out files based on the conditions passed in.
 
     Args:
-      diff: list of diff objects to filter.
-      include_list: list of regex that when matched with a file path will cause
-          it to be added to the output list unless the file is also matched with
-          a regex in the exclude_list.
-      exclude_list: list of regex that when matched with a file will prevent it
-          from being added to the output list, even if it is also matched with a
-          regex in the include_list.
+        diff: list of diff objects to filter.
+        include_list: list of regex that when matched with a file path will
+            cause it to be added to the output list unless the file is also
+            matched with a regex in the exclude_list.
+        exclude_list: list of regex that when matched with a file will prevent
+            it from being added to the output list, even if it is also matched
+            with a regex in the include_list.
 
     Returns:
-      A list of filepaths that contain files matched in the include_list and not
-      in the exclude_list.
+        A list of filepaths that contain files matched in the include_list and
+        not in the exclude_list.
     """
     filtered = []
     for d in diff:
@@ -322,7 +324,7 @@ def _get_build_os_name():
     """Gets the build OS name.
 
     Returns:
-      A string in a format usable to get prebuilt tool paths.
+        A string in a format usable to get prebuilt tool paths.
     """
     system = platform.system()
     if "Darwin" in system or "Macintosh" in system:
@@ -342,10 +344,10 @@ def _check_cmd(hook_name, project, commit, cmd, fixup_cmd=None, **kwargs):
 
 
 # Where helper programs exist.
-TOOLS_DIR = os.path.realpath(__file__ + "/../../tools")
+TOOLS_DIR = THIS_DIR.parent / "tools"
 
 
-def get_helper_path(tool):
+def get_helper_path(tool: str) -> str:
     """Return the full path to the helper |tool|."""
     return os.path.join(TOOLS_DIR, tool)
 
@@ -616,35 +618,81 @@ def check_commit_msg_bug_field(project, commit, desc, _diff, options=None):
 def check_commit_msg_changeid_field(project, commit, desc, _diff, options=None):
     """Check the commit message for a 'Change-Id:' line."""
     field = "Change-Id"
-    regex = rf"^{field}: I[a-f0-9]+$"
-    check_re = re.compile(regex)
+    exact_prefix = f"{field}:"
+    lower_prefix = exact_prefix.lower()
+    value_pattern = r"I[a-f0-9]+$"
+    valid_line_re = re.compile(rf"^{exact_prefix} {value_pattern}")
 
     if options.args():
         raise ValueError(f"commit msg {field} check takes no options")
 
-    found = []
+    total_count = 0
+    has_casing_error = False
+    has_format_error = False
     for line in desc.splitlines():
-        if check_re.match(line):
-            found.append(line)
+        line_lower = line.lower()
+        if line_lower.startswith(lower_prefix):
+            total_count += 1
+            if not line.startswith(exact_prefix):
+                has_casing_error = True
+            elif not valid_line_re.match(line):
+                has_format_error = True
 
-    if not found:
-        error = (
-            f'Commit message is missing a "{field}:" line.  It must match the\n'
-            f"following case-sensitive regex:\n\n    {regex}"
+    ret = []
+    if has_casing_error:
+        ret.append(
+            rh.results.HookResult(
+                f'commit msg: "{field}:" check',
+                project,
+                commit,
+                error=(
+                    f'Commit message has invalid casing for "{field}:".  '
+                    f'It must match exact case "{field}:".'
+                ),
+            )
         )
-    elif len(found) > 1:
-        error = (
-            f'Commit message has too many "{field}:" lines.  There can be '
-            "only one."
-        )
-    else:
-        return None
 
-    return [
-        rh.results.HookResult(
-            f'commit msg: "{field}:" check', project, commit, error=error
+    if has_format_error:
+        ret.append(
+            rh.results.HookResult(
+                f'commit msg: "{field}:" check',
+                project,
+                commit,
+                error=(
+                    f'Commit message has an invalid "{field}:" value format.  '
+                    f"It must start with 'I' followed by hex digits "
+                    f"(regex: {value_pattern})."
+                ),
+            )
         )
-    ]
+
+    if total_count == 0:
+        ret.append(
+            rh.results.HookResult(
+                f'commit msg: "{field}:" check',
+                project,
+                commit,
+                error=(
+                    f'Commit message is missing a "{field}:" line.  '
+                    f"It must match the following case-sensitive regex:\n\n    "
+                    f"^{exact_prefix} {value_pattern}"
+                ),
+            )
+        )
+    elif total_count > 1:
+        ret.append(
+            rh.results.HookResult(
+                f'commit msg: "{field}:" check',
+                project,
+                commit,
+                error=(
+                    f'Commit message has too many "{field}:" lines.  '
+                    "There can be only one."
+                ),
+            )
+        )
+
+    return ret or None
 
 
 PREBUILT_APK_MSG = """Commit message is missing required prebuilt APK
@@ -1299,7 +1347,31 @@ def check_alint(project, commit, _desc, diff, options=None):
 
     cmd = [alint_path] + options.args((), diff) + ["--commit", commit]
 
-    return _check_cmd("alint", project, commit, cmd)
+    result = _run(cmd)
+
+    # alint returns exit code 5 or 6 if there are findings with fixes available.
+    # Only provide fixup command if we are checking HEAD, as alint fix is not
+    # supported for non-head commits.
+    head_hash = rh.git.get_commit_for_ref("HEAD")
+    is_head = commit in ("HEAD", head_hash)
+    fixup_cmd = (
+        [alint_path, "fix", "-y", "--no_amend", "--commit", commit]
+        if is_head and result.returncode in (5, 6)
+        else None
+    )
+
+    # If alint returns 6, it means there are findings with fixes, but it
+    # should be non-blocking (warning).
+    return [
+        rh.results.HookCommandResult(
+            "alint",
+            project,
+            commit,
+            result,
+            fixup_cmd=fixup_cmd,
+            warning=result.returncode == 6,
+        )
+    ]
 
 
 # Hooks that projects can opt into.
@@ -1337,13 +1409,13 @@ BUILTIN_HOOKS = {
 TOOL_PATHS = {
     "aidl-format": "aidl-format",
     "alint": "alint",
-    "android-test-mapping-format": os.path.join(
-        TOOLS_DIR, "android_test_mapping_format.py"
+    "android-test-mapping-format": get_helper_path(
+        "android_test_mapping_format.py"
     ),
     "black": "black",
     "bpfmt": "bpfmt",
     "clang-format": "clang-format",
-    "cpplint": os.path.join(TOOLS_DIR, "cpplint.py"),
+    "cpplint": get_helper_path("cpplint.py"),
     "git-clang-format": "git-clang-format",
     "gofmt": "gofmt",
     "google-java-format": "google-java-format",
