@@ -16,21 +16,22 @@
 """Unittests for the config module."""
 
 import os
+from pathlib import Path
 import shutil
 import sys
 import tempfile
 import unittest
 
-_path = os.path.realpath(__file__ + "/../..")
-if sys.path[0] != _path:
-    sys.path.insert(0, _path)
-del _path
+
+THIS_FILE = Path(__file__).resolve()
+THIS_DIR = THIS_FILE.parent
+sys.path.insert(0, str(THIS_DIR.parent))
 
 # We have to import our local modules after the sys.path tweak.  We can't use
 # relative imports because this is an executable program, not a module.
 # pylint: disable=wrong-import-position
-import rh.hooks
 import rh.config
+import rh.hooks
 
 
 class PreUploadConfigTests(unittest.TestCase):
@@ -54,7 +55,7 @@ class FileTestCase(unittest.TestCase):
         """Helper to write out a config file for testing.
 
         Returns:
-          Path to the file where the configuration was written.
+            Path to the file where the configuration was written.
         """
         path = os.path.join(self.tempdir, filename)
         with open(path, "w", encoding="utf-8") as fp:
@@ -97,6 +98,7 @@ cpplint = --some 'more args'
 
 [Options]
 ignore_merged_commits = true
+fallback_subtrees = android, kernel, bootloader
 """
         )
         rh.config.PreUploadFile(path)
@@ -155,6 +157,17 @@ cpplint = external/ 'test directory' ^vendor/(?!google/)
             rh.config.ValidationError, rh.config.LocalPreUploadFile, path
         )
 
+    def testInvalidFallbackSubtrees(self):
+        """Reject local config that specifies fallback_subtrees."""
+        path = self._write_config(
+            """[Options]
+fallback_subtrees = android, kernel
+"""
+        )
+        self.assertRaises(
+            rh.config.ValidationError, rh.config.LocalPreUploadFile, path
+        )
+
 
 class PreUploadSettingsTests(FileTestCase):
     """Tests for the PreUploadSettings class."""
@@ -188,6 +201,19 @@ cpplint = external/ 'test directory' ^vendor/(?!google/)
 """
         )
         rh.config.PreUploadSettings(global_paths=(self.tempdir,))
+
+    def testFallbackSubtrees(self):
+        """Verify fallback_subtrees property works and filters unsafe paths."""
+        self._write_global_config(
+            """[Options]
+fallback_subtrees = /android, kernel\\, \\bootloader/, ../escape, ,
+"""
+        )
+        config = rh.config.PreUploadSettings(global_paths=(self.tempdir,))
+        self.assertEqual(
+            config.fallback_subtrees,
+            ["android", "kernel", "bootloader"],
+        )
 
 
 if __name__ == "__main__":
