@@ -15,19 +15,21 @@
 """Git helper functions."""
 
 import os
+from pathlib import Path
 import re
 import sys
+from typing import List, Optional, Union
 
-_path = os.path.realpath(__file__ + "/../..")
-if sys.path[0] != _path:
-    sys.path.insert(0, _path)
-del _path
+
+THIS_FILE = Path(__file__).resolve()
+THIS_DIR = THIS_FILE.parent
+sys.path.insert(0, str(THIS_DIR.parent))
 
 # pylint: disable=wrong-import-position
 import rh.utils
 
 
-def get_upstream_remote():
+def get_upstream_remote() -> str:
     """Returns the current upstream remote name."""
     # First get the current branch name.
     cmd = ["git", "rev-parse", "--abbrev-ref", "HEAD"]
@@ -40,11 +42,11 @@ def get_upstream_remote():
     return result.stdout.strip()
 
 
-def get_upstream_branch():
+def get_upstream_branch() -> str:
     """Returns the upstream tracking branch of the current branch.
 
     Raises:
-      Error if there is no tracking branch
+        Error if there is no tracking branch
     """
     cmd = ["git", "symbolic-ref", "HEAD"]
     result = rh.utils.run(cmd, capture_output=True)
@@ -68,14 +70,23 @@ def get_upstream_branch():
     return full_upstream.replace("heads", "remotes/" + remote)
 
 
-def get_commit_for_ref(ref):
+def get_config(key: str, cwd: Optional[str] = None) -> Optional[str]:
+    """Returns the value for a git config key, or None if unset."""
+    cmd = ["git", "config", "--get", key]
+    result = rh.utils.run(cmd, capture_output=True, check=False, cwd=cwd)
+    if result.returncode == 0:
+        return result.stdout.strip()
+    return None
+
+
+def get_commit_for_ref(ref: str, cwd: Optional[str] = None) -> str:
     """Returns the latest commit for this ref."""
     cmd = ["git", "rev-parse", ref]
-    result = rh.utils.run(cmd, capture_output=True)
+    result = rh.utils.run(cmd, capture_output=True, cwd=cwd)
     return result.stdout.strip()
 
 
-def get_remote_revision(ref, remote):
+def get_remote_revision(ref: str, remote: str) -> str:
     """Returns the remote revision for this ref."""
     prefix = f"refs/remotes/{remote}/"
     if ref.startswith(prefix):
@@ -83,13 +94,13 @@ def get_remote_revision(ref, remote):
     return ref
 
 
-def get_patch(commit):
+def get_patch(commit: str) -> str:
     """Returns the patch for this commit."""
     cmd = ["git", "format-patch", "--stdout", "-1", commit]
     return rh.utils.run(cmd, capture_output=True).stdout
 
 
-def get_file_content(commit, path):
+def get_file_content(commit: str, path: str) -> str:
     """Returns the content of a file at a specific commit.
 
     We can't rely on the file as it exists in the filesystem as people might be
@@ -109,16 +120,16 @@ class RawDiffEntry(object):
     # pylint: disable=redefined-builtin
     def __init__(
         self,
-        src_mode=0,
-        dst_mode=0,
-        src_sha=None,
-        dst_sha=None,
-        status=None,
-        score=None,
-        src_file=None,
-        dst_file=None,
-        file=None,
-    ):
+        src_mode: Union[str, int] = 0,
+        dst_mode: Union[str, int] = 0,
+        src_sha: Optional[str] = None,
+        dst_sha: Optional[str] = None,
+        status: Optional[str] = None,
+        score: Optional[str] = None,
+        src_file: Optional[str] = None,
+        dst_file: Optional[str] = None,
+        file: Optional[str] = None,
+    ) -> None:
         self.src_mode = src_mode
         self.dst_mode = dst_mode
         self.src_sha = src_sha
@@ -139,15 +150,15 @@ DIFF_RE = re.compile(
 )
 
 
-def raw_diff(path, target):
+def raw_diff(path: str, target: str) -> List[RawDiffEntry]:
     """Return the parsed raw format diff of target
 
     Args:
-      path: Path to the git repository to diff in.
-      target: The target to diff.
+        path: Path to the git repository to diff in.
+        target: The target to diff.
 
     Returns:
-      A list of RawDiffEntry's.
+        A list of RawDiffEntry's.
     """
     entries = []
 
@@ -169,16 +180,16 @@ def raw_diff(path, target):
     return entries
 
 
-def get_affected_files(commit):
+def get_affected_files(commit: str) -> List[RawDiffEntry]:
     """Returns list of file paths that were modified/added.
 
     Returns:
-      A list of modified/added (and perhaps deleted) files
+        A list of modified/added (and perhaps deleted) files
     """
     return raw_diff(os.getcwd(), f"{commit}^-")
 
 
-def get_commits(ignore_merged_commits=False):
+def get_commits(ignore_merged_commits=False) -> List[str]:
     """Returns a list of commits for this review."""
     cmd = ["git", "rev-list", f"{get_upstream_branch()}.."]
     if ignore_merged_commits:
@@ -186,17 +197,18 @@ def get_commits(ignore_merged_commits=False):
     return rh.utils.run(cmd, capture_output=True).stdout.split()
 
 
-def get_commit_desc(commit):
+def get_commit_desc(commit: str) -> str:
     """Returns the full commit message of a commit."""
     cmd = ["git", "diff-tree", "-s", "--always", "--format=%B", commit]
     return rh.utils.run(cmd, capture_output=True).stdout
 
 
-def find_repo_root(path=None, outer=False):
+def find_repo_root(path: Optional[str] = None, outer: bool = False) -> str:
     """Locate the top level of this repo checkout starting at |path|.
 
     Args:
-      outer: Whether to find the outermost manifest, or the sub-manifest.
+        path: Path under repo checkout to search; defaults to the cwd.
+        outer: Whether to find the outermost manifest, or the sub-manifest.
     """
     if path is None:
         path = os.getcwd()
@@ -234,7 +246,7 @@ def find_repo_root(path=None, outer=False):
     return path
 
 
-def is_git_repository(path):
+def is_git_repository(path: str) -> bool:
     """Returns True if the path is a valid git repository."""
     cmd = ["git", "rev-parse", "--resolve-git-dir", os.path.join(path, ".git")]
     result = rh.utils.run(cmd, capture_output=True, check=False)

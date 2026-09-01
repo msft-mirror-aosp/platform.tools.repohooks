@@ -17,16 +17,18 @@
 import errno
 import functools
 import os
+from pathlib import Path
 import signal
 import subprocess
 import sys
 import tempfile
 import time
+from typing import IO, Optional, Sequence, Union
 
-_path = os.path.realpath(__file__ + "/../..")
-if sys.path[0] != _path:
-    sys.path.insert(0, _path)
-del _path
+
+THIS_FILE = Path(__file__).resolve()
+THIS_DIR = THIS_FILE.parent
+sys.path.insert(0, str(THIS_DIR.parent))
 
 # pylint: disable=wrong-import-position
 import rh.shell
@@ -79,9 +81,9 @@ class CalledProcessError(subprocess.CalledProcessError):
     only |stdout|.
 
     Attributes:
-      returncode: The exit code of the process.
-      cmd: The command that triggered this exception.
-      msg: Short explanation of the error.
+        returncode: The exit code of the process.
+        cmd: The command that triggered this exception.
+        msg: Short explanation of the error.
     """
 
     def __init__(self, returncode, cmd, stdout=None, stderr=None, msg=None):
@@ -113,11 +115,11 @@ class CalledProcessError(subprocess.CalledProcessError):
         """Custom method for controlling what is included in stringifying this.
 
         Args:
-          stdout: Whether to include captured stdout in the return value.
-          stderr: Whether to include captured stderr in the return value.
+            stdout: Whether to include captured stdout in the return value.
+            stderr: Whether to include captured stderr in the return value.
 
         Returns:
-          A summary string for this result.
+            A summary string for this result.
         """
         items = [
             f"return code: {self.returncode}; command: {self.cmdstr}",
@@ -254,7 +256,7 @@ class _Popen(subprocess.Popen):
 # We use the keyword arg |input| which trips up pylint checks.
 # pylint: disable=redefined-builtin
 def run(
-    cmd,
+    cmd: Sequence[Union[str, Path]],
     redirect_stdout=False,
     redirect_stderr=False,
     cwd=None,
@@ -271,41 +273,42 @@ def run(
     """Runs a command.
 
     Args:
-      cmd: cmd to run.  Should be input to subprocess.Popen.  If a string, shell
-          must be true.  Otherwise the command must be an array of arguments,
-          and shell must be false.
-      redirect_stdout: Returns the stdout.
-      redirect_stderr: Holds stderr output until input is communicated.
-      cwd: The working directory to run this cmd.
-      input: The data to pipe into this command through stdin.  If a file object
-          or file descriptor, stdin will be connected directly to that.
-      shell: Controls whether we add a shell as a command interpreter.  See cmd
-          since it has to agree as to the type.
-      env: If non-None, this is the environment for the new process.
-      extra_env: If set, this is added to the environment for the new process.
-          This dictionary is not used to clear any entries though.
-      combine_stdout_stderr: Combines stdout and stderr streams into stdout.
-      check: Whether to raise an exception when command returns a non-zero exit
-          code, or return the CompletedProcess object containing the exit code.
-          Note: will still raise an exception if the cmd file does not exist.
-      int_timeout: If we're interrupted, how long (in seconds) should we give
-          the invoked process to clean up before we send a SIGTERM.
-      kill_timeout: If we're interrupted, how long (in seconds) should we give
-          the invoked process to shutdown from a SIGTERM before we SIGKILL it.
-      capture_output: Set |redirect_stdout| and |redirect_stderr| to True.
+        cmd: cmd to run.  Should be input to subprocess.Popen.  If a string,
+            shell must be true.  Otherwise the command must be an array of
+            arguments, and shell must be false.
+        redirect_stdout: Returns the stdout.
+        redirect_stderr: Holds stderr output until input is communicated.
+        cwd: The working directory to run this cmd.
+        input: The data to pipe into this command through stdin.  If a file
+            object or file descriptor, stdin will be connected directly to that.
+        shell: Controls whether we add a shell as a command interpreter.  See
+            cmd since it has to agree as to the type.
+        env: If non-None, this is the environment for the new process.
+        extra_env: If set, this is added to the environment for the new process.
+            This dictionary is not used to clear any entries though.
+        combine_stdout_stderr: Combines stdout and stderr streams into stdout.
+        check: Whether to raise an exception when command returns a non-zero
+            exit code, or return the CompletedProcess object containing the exit
+            code.  Note: will still raise an exception if the cmd file does not
+            exist.
+        int_timeout: If we're interrupted, how long (in seconds) should we give
+            the invoked process to clean up before we send a SIGTERM.
+        kill_timeout: If we're interrupted, how long (in seconds) should we give
+            the invoked process to shutdown from a SIGTERM before we SIGKILL it.
+        capture_output: Set |redirect_stdout| and |redirect_stderr| to True.
 
     Returns:
-      A CompletedProcess object.
+        A CompletedProcess object.
 
     Raises:
-      CalledProcessError: Raises exception on error.
+        CalledProcessError: Raises exception on error.
     """
     if capture_output:
         redirect_stdout, redirect_stderr = True, True
 
     # Set default for variables.
-    popen_stdout = None
-    popen_stderr = None
+    popen_stdout: Optional[IO[bytes]] = None
+    popen_stderr: Optional[Union[int, IO[bytes]]] = None
     stdin = None
     result = CompletedProcess()
 
@@ -313,7 +316,7 @@ def run(
     # a self-explanatory exception will be thrown.
     kill_timeout = float(kill_timeout)
 
-    def _get_tempfile():
+    def _get_tempfile() -> IO[bytes]:
         try:
             return tempfile.TemporaryFile(buffering=0)
         except EnvironmentError as e:
@@ -429,14 +432,12 @@ def run(
 
             if popen_stdout:
                 # The linter is confused by how stdout is a file & an int.
-                # pylint: disable=maybe-no-member,no-member
                 popen_stdout.seek(0)
                 result.stdout = popen_stdout.read()
                 popen_stdout.close()
 
-            if popen_stderr and popen_stderr != subprocess.STDOUT:
+            if popen_stderr and not isinstance(popen_stderr, int):
                 # The linter is confused by how stderr is a file & an int.
-                # pylint: disable=maybe-no-member,no-member
                 popen_stderr.seek(0)
                 result.stderr = popen_stderr.read()
                 popen_stderr.close()
