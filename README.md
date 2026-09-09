@@ -147,6 +147,10 @@ pre-upload checks.  The following options are recognized:
 
 * `ignore_merged_commits`: If set to `true`, the hooks will not run on commits
   that are merged.  Hooks will still run on the merge commit itself.
+* `fallback_subtrees`: A comma-separated list of relative subtree paths (e.g.
+  `android, kernel`) to search if a tool or file path anchored by `${REPO_ROOT}`
+  does not exist at the workspace root. Note: this option can only be set in
+  manifest-wide settings ([GLOBAL-PREUPLOAD.cfg](#global-preuploadcfg)).
 
 ## [Hook Scripts]
 
@@ -178,9 +182,12 @@ This section allows for turning on common/builtin hooks.  There are a bunch of
 canned hooks already included geared towards AOSP style guidelines.
 
 * `aidl_format`: Run AIDL files (.aidl) through `aidl-format`.
+* `alint`: Run AyeAye (Google Android service) analyzers on the CL to be uploaded.
 * `aosp_license`: Check if all new-added file have valid AOSP license headers.
 * `android_test_mapping_format`: Validate TEST_MAPPING files in Android source
   code. Refer to go/test-mapping for more details.
+* `black`: Run Python files (.py) through `black`.  Settings can be stored in
+  `pyproject.toml` in the root of the project.
 * `bpfmt`: Run Blueprint files (.bp) through `bpfmt`.
 * `checkpatch`: Run commits through the Linux kernel's `checkpatch.pl` script.
 * `clang_format`: Run git-clang-format against the commit. The default style is
@@ -278,8 +285,10 @@ provide consistent behavior for developers across different OS and Linux
 distros/versions.  The following tools are recognized:
 
 * `aidl-format`: used for the `aidl_format` builtin hook.
+* `alint`: used for the `alint` builtin hook.
 * `android-test-mapping-format`: used for the `android_test_mapping_format`
   builtin hook.
+* `black`: used for the `black` builtin hook.
 * `bpfmt`: used for the `bpfmt` builtin hook.
 * `clang-format`: used for the `clang_format` builtin hook.
 * `cpplint`: used for the `cpplint` builtin hook.

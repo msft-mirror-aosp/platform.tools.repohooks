@@ -14,14 +14,17 @@
 
 """Common errors thrown when repo preupload checks fail."""
 
-import os
+from pathlib import Path
 import sys
-from typing import List, NamedTuple, Optional
+from typing import Iterable, Iterator, List, NamedTuple, Optional
 
-_path = os.path.realpath(__file__ + '/../..')
-if sys.path[0] != _path:
-    sys.path.insert(0, _path)
-del _path
+
+THIS_FILE = Path(__file__).resolve()
+THIS_DIR = THIS_FILE.parent
+sys.path.insert(0, str(THIS_DIR.parent))
+
+# pylint: disable=wrong-import-position
+import rh.utils
 
 
 class HookResult(object):
@@ -29,27 +32,27 @@ class HookResult(object):
 
     def __init__(
         self,
-        hook,
-        project,
-        commit,
-        error,
+        hook: str,
+        project: str,
+        commit: str,
+        error: str,
         warning: bool = False,
-        files=(),
+        files: Iterable[str] = (),
         fixup_cmd: Optional[List[str]] = None,
-    ):
+    ) -> None:
         """Initialize.
 
         Args:
-          hook: The name of the hook.
-          project: The name of the project.
-          commit: The git commit sha.
-          error: A string representation of the hook's result.  Empty on
-              success.
-          warning: Whether this result is a warning, not an error.
-          files: The list of files that were involved in the hook execution.
-          fixup_cmd: A command that can automatically fix errors found in the
-              hook's execution.  Can be None if the hook does not support
-              automatic fixups.
+            hook: The name of the hook.
+            project: The name of the project.
+            commit: The git commit sha.
+            error: A string representation of the hook's result.  Empty on
+                success.
+            warning: Whether this result is a warning, not an error.
+            files: The list of files that were involved in the hook execution.
+            fixup_cmd: A command that can automatically fix errors found in the
+                hook's execution.  Can be None if the hook does not support
+                automatic fixups.
         """
         self.hook = hook
         self.project = project
@@ -59,11 +62,11 @@ class HookResult(object):
         self.files = files
         self.fixup_cmd = fixup_cmd
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         """Whether this result is an error."""
-        return bool(self.error) and not self._warning
+        return bool(self.error) and not self.is_warning()
 
-    def is_warning(self):
+    def is_warning(self) -> bool:
         """Whether this result is a non-fatal warning."""
         return self._warning
 
@@ -71,20 +74,35 @@ class HookResult(object):
 class HookCommandResult(HookResult):
     """A single hook result based on a CompletedProcess."""
 
-    def __init__(self, hook, project, commit, result, files=(),
-                 fixup_cmd=None):
-        HookResult.__init__(self, hook, project, commit,
-                            result.stderr if result.stderr else result.stdout,
-                            files=files, fixup_cmd=fixup_cmd)
+    def __init__(
+        self,
+        hook: str,
+        project: str,
+        commit: str,
+        result: rh.utils.CompletedProcess,
+        warning: bool = False,
+        files: Iterable[str] = (),
+        fixup_cmd: Optional[List[str]] = None,
+    ) -> None:
+        HookResult.__init__(
+            self,
+            hook,
+            project,
+            commit,
+            result.stderr if result.stderr else result.stdout,
+            warning=warning,
+            files=files,
+            fixup_cmd=fixup_cmd,
+        )
         self.result = result
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         """Whether this result is an error."""
-        return self.result.returncode not in (None, 0, 77)
+        return not self.is_warning() and self.result.returncode not in (None, 0)
 
-    def is_warning(self):
+    def is_warning(self) -> bool:
         """Whether this result is a non-fatal warning."""
-        return self.result.returncode == 77
+        return self._warning or self.result.returncode == 77
 
 
 class ProjectResults(NamedTuple):
@@ -94,7 +112,7 @@ class ProjectResults(NamedTuple):
     workdir: str
 
     # All the results from running all the hooks.
-    results: List[HookResult] = []
+    results: List[HookResult]
 
     # Whether there were any non-hook related errors.  For example, trying to
     # parse the project configuration.
@@ -106,10 +124,12 @@ class ProjectResults(NamedTuple):
             self.results.extend(results)
 
     @property
-    def fixups(self):
+    def fixups(self) -> Iterator[HookResult]:
         """Yield results that have a fixup available."""
-        yield from (x for x in self.results if x and x.fixup_cmd)
+        yield from (
+            x for x in self.results if (x or x.is_warning()) and x.fixup_cmd
+        )
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         """Whether there are any errors in this set of results."""
         return self.internal_failure or any(self.results)
