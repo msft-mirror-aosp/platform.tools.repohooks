@@ -16,16 +16,15 @@
 """Unittests for the hooks module."""
 
 import os
+from pathlib import Path
 import sys
 import unittest
 from unittest import mock
 
-import pytest
 
-_path = os.path.realpath(__file__ + "/../..")
-if sys.path[0] != _path:
-    sys.path.insert(0, _path)
-del _path
+THIS_FILE = Path(__file__).resolve()
+THIS_DIR = THIS_FILE.parent
+sys.path.insert(0, str(THIS_DIR.parent))
 
 # We have to import our local modules after the sys.path tweak.  We can't use
 # relative imports because this is an executable program, not a module.
@@ -48,10 +47,7 @@ class HooksDocsTests(unittest.TestCase):
     """
 
     def setUp(self):
-        self.readme = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.realpath(__file__))),
-            "README.md",
-        )
+        self.readme = THIS_DIR.parent / "README.md"
 
     def _grab_section(self, section):
         """Extract the |section| text out of the readme."""
@@ -241,6 +237,117 @@ class PlaceholderTests(unittest.TestCase):
         """Verify handling of BUILD_OS."""
         self.assertEqual(self.replacer.get("BUILD_OS"), m.return_value)
 
+    @mock.patch.dict(
+        os.environ,
+        {"PREUPLOAD_COMMIT": "5c4c293174bb61f0f39035a71acd9084abfa743d"},
+    )
+    def testSubtreePathResolution(self):
+        """Verify fallback resolution of subtree paths under REPO_ROOT."""
+        replacer = rh.hooks.Placeholders(
+            fallback_subtrees=["android", "kernel", "bootloader"]
+        )
+        with mock.patch.object(
+            rh.git, "find_repo_root", return_value="/workspace"
+        ):
+            # 1. Path exists under explicitly configured subtree (android/)
+            def fake_exists(path):
+                return (
+                    path
+                    == "/workspace/android/prebuilts/checkstyle/checkstyle.py"
+                )
+
+            with mock.patch("os.path.exists", side_effect=fake_exists):
+                input_args = [
+                    "${REPO_ROOT}/prebuilts/checkstyle/checkstyle.py",
+                    "--sha",
+                    "${PREUPLOAD_COMMIT}",
+                ]
+                output = replacer.expand_vars(input_args)
+                self.assertEqual(
+                    output,
+                    [
+                        "/workspace/android/prebuilts/checkstyle/checkstyle.py",
+                        "--sha",
+                        os.environ["PREUPLOAD_COMMIT"],
+                    ],
+                )
+
+            # 2. Path exists under fallback domain (kernel/)
+            def fake_exists_kernel(path):
+                return path == "/workspace/kernel/vendor/google/tools/alint"
+
+            with mock.patch("os.path.exists", side_effect=fake_exists_kernel):
+                input_args = ["${REPO_ROOT}/vendor/google/tools/alint"]
+                output = replacer.expand_vars(input_args)
+                self.assertEqual(
+                    output,
+                    ["/workspace/kernel/vendor/google/tools/alint"],
+                )
+
+            # 3. Precedence: First matching subtree wins
+            def fake_exists_both(path):
+                return path in (
+                    "/workspace/android/tools/checker",
+                    "/workspace/kernel/tools/checker",
+                )
+
+            with mock.patch("os.path.exists", side_effect=fake_exists_both):
+                input_args = ["${REPO_ROOT}/tools/checker"]
+                output = replacer.expand_vars(input_args)
+                self.assertEqual(output, ["/workspace/android/tools/checker"])
+
+            # 4. Path exists directly at repo root (no fallback needed)
+            def fake_exists_root(path):
+                return path == "/workspace/prebuilts/checkstyle/checkstyle.py"
+
+            with mock.patch("os.path.exists", side_effect=fake_exists_root):
+                input_args = ["${REPO_ROOT}/prebuilts/checkstyle/checkstyle.py"]
+                output = replacer.expand_vars(input_args)
+                self.assertEqual(
+                    output,
+                    ["/workspace/prebuilts/checkstyle/checkstyle.py"],
+                )
+
+            # 5. Negative case: Path does not exist anywhere
+            def fake_exists_none(_path):
+                return False
+
+            with mock.patch("os.path.exists", side_effect=fake_exists_none):
+                input_args = ["${REPO_ROOT}/nonexistent/tool"]
+                output = replacer.expand_vars(input_args)
+                self.assertEqual(output, ["/workspace/nonexistent/tool"])
+
+            # 6. Safety: Candidate paths that escape repo root are ignored
+            replacer_traversal = rh.hooks.Placeholders(
+                fallback_subtrees=["../outside"]
+            )
+            with mock.patch("os.path.exists", return_value=True):
+                input_args = ["${REPO_ROOT}/tool"]
+                output = replacer_traversal.expand_vars(input_args)
+                self.assertEqual(output, ["/workspace/tool"])
+
+        # 7. Unconfigured subtree is not resolved
+        replacer_empty = rh.hooks.Placeholders(fallback_subtrees=[])
+        with mock.patch.object(
+            rh.git, "find_repo_root", return_value="/workspace"
+        ):
+
+            def fake_exists_unconfigured(path):
+                return (
+                    path
+                    == "/workspace/android/prebuilts/checkstyle/checkstyle.py"
+                )
+
+            with mock.patch(
+                "os.path.exists", side_effect=fake_exists_unconfigured
+            ):
+                input_args = ["${REPO_ROOT}/prebuilts/checkstyle/checkstyle.py"]
+                output = replacer_empty.expand_vars(input_args)
+                self.assertEqual(
+                    output,
+                    ["/workspace/prebuilts/checkstyle/checkstyle.py"],
+                )
+
 
 class ExclusionScopeTests(unittest.TestCase):
     """Verify behavior of ExclusionScope class."""
@@ -266,9 +373,11 @@ class ExclusionScopeTests(unittest.TestCase):
 class HookOptionsTests(unittest.TestCase):
     """Verify behavior of HookOptions object."""
 
-    @pytest.mark.skip_cq("TODO: Relies on .repo dir")
+    @mock.patch.object(
+        rh.git, "find_repo_root", side_effect=mock_find_repo_root
+    )
     @mock.patch.object(rh.hooks, "_get_build_os_name", return_value="vapier os")
-    def testExpandVars(self, m):
+    def testExpandVars(self, m, _m):
         """Verify expand_vars behavior."""
         # Simple pass through.
         args = ["who", "goes", "there ?"]
@@ -279,8 +388,10 @@ class HookOptionsTests(unittest.TestCase):
         exp_args = ["who", "goes", "there ?", f"{m.return_value} is great"]
         self.assertEqual(exp_args, rh.hooks.HookOptions.expand_vars(args))
 
-    @pytest.mark.skip_cq("TODO: Relies on .repo dir")
-    def testArgs(self):
+    @mock.patch.object(
+        rh.git, "find_repo_root", side_effect=mock_find_repo_root
+    )
+    def testArgs(self, _m):
         """Verify args behavior."""
         # Verify initial args to __init__ has higher precedent.
         args = ["start", "args"]
@@ -294,8 +405,10 @@ class HookOptionsTests(unittest.TestCase):
         self.assertEqual(options.args(), [])
         self.assertEqual(options.args(default_args=args), args)
 
-    @pytest.mark.skip_cq("TODO: Relies on .repo dir")
-    def testToolPath(self):
+    @mock.patch.object(
+        rh.git, "find_repo_root", side_effect=mock_find_repo_root
+    )
+    def testToolPath(self, _):
         """Verify tool_path behavior."""
         options = rh.hooks.HookOptions(
             "hook name",
@@ -310,6 +423,35 @@ class HookOptionsTests(unittest.TestCase):
         self.assertEqual(options.tool_path("cpplint"), "my cpplint")
         # Check an unknown tool fails.
         self.assertRaises(AssertionError, options.tool_path, "extra_tool")
+
+    @mock.patch.object(rh.git, "find_repo_root", return_value="/workspace")
+    def testFallbackSubtrees(self, _m):
+        """Verify fallback_subtrees are passed through HookOptions."""
+        options = rh.hooks.HookOptions(
+            "hook name",
+            ["${REPO_ROOT}/tool"],
+            {"cpplint": "${REPO_ROOT}/prebuilts/cpplint"},
+            fallback_subtrees=["android"],
+        )
+
+        def fake_exists(path):
+            return path in (
+                "/workspace/android/tool",
+                "/workspace/android/prebuilts/cpplint",
+            )
+
+        with mock.patch("os.path.exists", side_effect=fake_exists):
+            self.assertEqual(options.args(), ["/workspace/android/tool"])
+            self.assertEqual(
+                options.tool_path("cpplint"),
+                "/workspace/android/prebuilts/cpplint",
+            )
+            self.assertEqual(
+                rh.hooks.HookOptions.expand_vars(
+                    ["${REPO_ROOT}/tool"], fallback_subtrees=["android"]
+                ),
+                ["/workspace/android/tool"],
+            )
 
 
 class UtilsTests(unittest.TestCase):
@@ -362,15 +504,21 @@ class BuiltinHooksTests(unittest.TestCase):
     def setUp(self):
         self.project = rh.Project(name="project-name", dir="/.../repo/dir")
         self.options = rh.hooks.HookOptions("hook name", [], {})
+        mock.patch.object(
+            rh.git, "find_repo_root", side_effect=mock_find_repo_root
+        ).start()
+
+    def tearDown(self):
+        mock.patch.stopall()
 
     def _test_commit_messages(self, func, accept, msgs, files=None):
         """Helper for testing commit message hooks.
 
         Args:
-          func: The hook function to test.
-          accept: Whether all the |msgs| should be accepted.
-          msgs: List of messages to test.
-          files: List of files to pass to the hook.
+            func: The hook function to test.
+            accept: Whether all the |msgs| should be accepted.
+            msgs: List of messages to test.
+            files: List of files to pass to the hook.
         """
         if files:
             diff = [rh.git.RawDiffEntry(file=x) for x in files]
@@ -387,13 +535,34 @@ class BuiltinHooksTests(unittest.TestCase):
                     bool(ret), msg="Should have rejected: {{{" + desc + "}}}"
                 )
 
+    def _test_commit_message_errors(
+        self, func, desc, expected_errors, files=None
+    ):
+        """Helper for testing hooks that reject messages with error strings."""
+        if files:
+            diff = [rh.git.RawDiffEntry(file=x) for x in files]
+        else:
+            diff = []
+        ret = func(self.project, "commit", desc, diff, options=self.options)
+        self.assertIsNotNone(ret, msg=f"Should have rejected: {{{desc}}}")
+        assert len(ret) == len(expected_errors)
+        errors = [r.error for r in ret]
+        for expected in expected_errors:
+            self.assertTrue(
+                any(expected in e for e in errors),
+                msg=(
+                    f'Expected error substring "{expected}" '
+                    f"not found in {errors}"
+                ),
+            )
+
     def _test_file_filter(self, mock_check, func, files):
         """Helper for testing hooks that filter by files and run external tools.
 
         Args:
-          mock_check: The mock of _check_cmd.
-          func: The hook function to test.
-          files: A list of files that we'd check.
+            mock_check: The mock of _check_cmd.
+            func: The hook function to test.
+            files: A list of files that we'd check.
         """
         # First call should do nothing as there are no files to check.
         ret = func(self.project, "commit", "desc", (), options=self.options)
@@ -579,22 +748,69 @@ class BuiltinHooksTests(unittest.TestCase):
         )
 
     def test_commit_msg_changeid_field(self, _mock_check, _mock_run):
-        """Verify the commit_msg_changeid_field builtin hook."""
-        # Check some good messages.
+        """Verify check_commit_msg_changeid_field accepts valid messages."""
         self._test_commit_messages(
             rh.hooks.check_commit_msg_changeid_field,
             True,
             ("subj\n\nChange-Id: I1234\n",),
         )
 
-        # Check some bad messages.
-        self._test_commit_messages(
+    def test_commit_msg_changeid_field_invalid_casing(
+        self, _mock_check, _mock_run
+    ):
+        """Verify check_commit_msg_changeid_field rejects bad casing."""
+        self._test_commit_message_errors(
             rh.hooks.check_commit_msg_changeid_field,
-            False,
+            "subj\n\nChange-ID: I1234\n",
+            ("invalid casing",),
+        )
+
+    def test_commit_msg_changeid_field_invalid_format(
+        self, _mock_check, _mock_run
+    ):
+        """Verify check_commit_msg_changeid_field rejects malformed IDs."""
+        self._test_commit_message_errors(
+            rh.hooks.check_commit_msg_changeid_field,
+            "subj\n\nChange-Id: 1234\n",
+            ('invalid "Change-Id:" value format',),
+        )
+
+    def test_commit_msg_changeid_field_duplicates(self, _mock_check, _mock_run):
+        """Verify check_commit_msg_changeid_field rejects duplicate footers."""
+        self._test_commit_message_errors(
+            rh.hooks.check_commit_msg_changeid_field,
+            "subj\n\nChange-Id: I1234\nChange-Id: I5678\n",
+            ('too many "Change-Id:" lines',),
+        )
+
+    def test_commit_msg_changeid_field_missing(self, _mock_check, _mock_run):
+        """Verify check_commit_msg_changeid_field rejects missing footers."""
+        self._test_commit_message_errors(
+            rh.hooks.check_commit_msg_changeid_field,
+            "subj",
+            ('missing a "Change-Id:" line',),
+        )
+
+    def test_commit_msg_changeid_field_valid_and_invalid_casing(
+        self, _mock_check, _mock_run
+    ):
+        """Verify check_commit_msg_changeid_field catches casing/duplicates."""
+        self._test_commit_message_errors(
+            rh.hooks.check_commit_msg_changeid_field,
+            "subj\n\nChange-Id: I1234\nChange-ID: I5678\n",
+            ("invalid casing", 'too many "Change-Id:" lines'),
+        )
+
+    def test_commit_msg_changeid_field_valid_and_invalid_format(
+        self, _mock_check, _mock_run
+    ):
+        """Verify check_commit_msg_changeid_field catches format/duplicates."""
+        self._test_commit_message_errors(
+            rh.hooks.check_commit_msg_changeid_field,
+            "subj\n\nChange-Id: I1234\nChange-Id: 5678\n",
             (
-                "subj",
-                "subj\n\nChange-Id: 1234\n",
-                "subj\n\nChange-ID: I1234\n",
+                'invalid "Change-Id:" value format',
+                'too many "Change-Id:" lines',
             ),
         )
 
@@ -1073,7 +1289,7 @@ class BuiltinHooksTests(unittest.TestCase):
 
         # TODO: Actually pass some valid/invalid json data down.
 
-    def test_ktfmt(self, mock_check, _mock_run):
+    def test_ktfmt(self, mock_check, mock_run):
         """Verify the ktfmt builtin hook."""
         # First call should do nothing as there are no files to check.
         ret = rh.hooks.check_ktfmt(
@@ -1081,6 +1297,8 @@ class BuiltinHooksTests(unittest.TestCase):
         )
         self.assertIsNone(ret)
         self.assertFalse(mock_check.called)
+        # Mock the run to return 1 (files need formatting)
+        mock_run.return_value = rh.utils.CompletedProcess(returncode=1)
         # Check that .kt files are included by default.
         diff = [
             rh.git.RawDiffEntry(file="foo.kt"),
@@ -1176,15 +1394,70 @@ class BuiltinHooksTests(unittest.TestCase):
 
     def test_alint(self, mock_check, mock_run):
         """Verify the alint builtin hook."""
-        commit = """Add test to the manifest
-        Bug: 11111
-        Test: ...
-        Flag: ..."""
+        commit = "HEAD"
         diff = [rh.git.RawDiffEntry(file="file.txt", status="A")]
-        ret = rh.hooks.check_alint(
-            self.project, commit, "desc", diff, options=self.options
-        )
-        self.assertIsNotNone(ret)
+
+        # Test success.
+        mock_run.return_value = rh.utils.CompletedProcess(returncode=0)
+        with mock.patch.object(
+            rh.git, "get_commit_for_ref", return_value="HEAD_HASH"
+        ):
+            ret = rh.hooks.check_alint(
+                self.project, commit, "desc", diff, options=self.options
+            )
+            self.assertIsNotNone(ret)
+            self.assertIsNone(ret[0].fixup_cmd)
+
+            # Test error with fix (HEAD commit).
+            mock_run.return_value = rh.utils.CompletedProcess(returncode=5)
+            ret = rh.hooks.check_alint(
+                self.project, commit, "desc", diff, options=self.options
+            )
+            self.assertIsNotNone(ret)
+            self.assertEqual(
+                ret[0].fixup_cmd,
+                ["alint", "fix", "-y", "--no_amend", "--commit", commit],
+            )
+            self.assertFalse(ret[0].is_warning())
+            self.assertEqual(ret[0].result.returncode, 5)
+
+            # Test warning with fix (HEAD commit).
+            mock_run.return_value = rh.utils.CompletedProcess(returncode=6)
+            ret = rh.hooks.check_alint(
+                self.project, commit, "desc", diff, options=self.options
+            )
+            self.assertIsNotNone(ret)
+            self.assertEqual(
+                ret[0].fixup_cmd,
+                ["alint", "fix", "-y", "--no_amend", "--commit", commit],
+            )
+            self.assertTrue(ret[0].is_warning())
+            self.assertEqual(ret[0].result.returncode, 6)
+
+            # Test error with fix (non-HEAD commit).
+            # Fixup command should NOT be generated.
+            mock_run.return_value = rh.utils.CompletedProcess(returncode=5)
+            non_head_commit = "ANOTHER_COMMIT"
+            ret = rh.hooks.check_alint(
+                self.project,
+                non_head_commit,
+                "desc",
+                diff,
+                options=self.options,
+            )
+            self.assertIsNotNone(ret)
+            self.assertIsNone(ret[0].fixup_cmd)
+            self.assertFalse(ret[0].is_warning())
+
+            # Test warning without fix.
+            mock_run.return_value = rh.utils.CompletedProcess(returncode=77)
+            ret = rh.hooks.check_alint(
+                self.project, commit, "desc", diff, options=self.options
+            )
+            self.assertIsNotNone(ret)
+            self.assertIsNone(ret[0].fixup_cmd)
+            self.assertTrue(ret[0].is_warning())
+            self.assertEqual(ret[0].result.returncode, 77)
 
 
 if __name__ == "__main__":
