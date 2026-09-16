@@ -20,7 +20,7 @@ This module handles terminal interaction including ANSI color codes.
 import os
 from pathlib import Path
 import sys
-from typing import List, Optional
+from typing import Iterable, Optional
 
 
 THIS_FILE = Path(__file__).resolve()
@@ -46,50 +46,52 @@ class Color(object):
     BOLD_START = "\033[1m"
     RESET = "\033[m"
 
-    def __init__(self, enabled=None):
+    def __init__(self, enabled: Optional[bool] = None) -> None:
         """Create a new Color object, optionally disabling color output.
 
         Args:
-          enabled: True if color output should be enabled.  If False then this
-              class will not add color codes at all.
+            enabled: True if color output should be enabled.  If False then this
+                class will not add color codes at all.
         """
         self._enabled = enabled
 
-    def start(self, color):
+    def start(self, color: int) -> str:
         """Returns a start color code.
 
         Args:
-          color: Color to use, e.g. BLACK, RED, etc...
+            color: Color to use, e.g. BLACK, RED, etc...
 
         Returns:
-          If color is enabled, returns an ANSI sequence to start the given
-          color, otherwise returns empty string
+            If color is enabled, returns an ANSI sequence to start the given
+            color, otherwise returns empty string
         """
         if self.enabled:
             return self.COLOR_START % (color + 30)
         return ""
 
-    def stop(self):
+    def stop(self) -> str:
         """Returns a stop color code.
 
         Returns:
-          If color is enabled, returns an ANSI color reset sequence, otherwise
-          returns empty string
+            If color is enabled, returns an ANSI color reset sequence, otherwise
+            returns empty string
         """
         if self.enabled:
             return self.RESET
         return ""
 
-    def color(self, color, text):
+    def color(self, color: int, text: str) -> str:
         """Returns text with conditionally added color escape sequences.
 
         Args:
-          color: Text color -- one of the color constants defined in this class.
-          text: The text to color.
+            color: Text color -- one of the color constants defined in this
+                class.
+            text: The text to color.
 
         Returns:
-          If self._enabled is False, returns the original text.  If it's True,
-          returns text with color escape sequences based on the value of color.
+            If self._enabled is False, returns the original text.  If it's True,
+            returns text with color escape sequences based on the value of
+            color.
         """
         if not self.enabled:
             return text
@@ -100,7 +102,7 @@ class Color(object):
         return start + text + self.RESET
 
     @property
-    def enabled(self):
+    def enabled(self) -> bool:
         """See if the colorization is enabled."""
         if self._enabled is None:
             if "NOCOLOR" in os.environ:
@@ -112,12 +114,12 @@ class Color(object):
         return self._enabled
 
 
-def print_status_line(line, print_newline=False):
+def print_status_line(line: str, print_newline: bool = False) -> None:
     """Clears the current terminal line, and prints |line|.
 
     Args:
-      line: String to print.
-      print_newline: Print a newline at the end, if sys.stderr is a TTY.
+        line: String to print.
+        print_newline: Print a newline at the end, if sys.stderr is a TTY.
     """
     if sys.stderr.isatty():
         output = "\r" + line + CSI_ERASE_LINE_AFTER
@@ -132,17 +134,18 @@ def print_status_line(line, print_newline=False):
 
 def str_prompt(
     prompt: str,
-    choices: List[str],
+    choices: Iterable[str],
     lower: bool = True,
 ) -> Optional[str]:
     """Helper function for processing user input.
 
     Args:
         prompt: The question to present to the user.
+        choices: What choices to provide to the user.
         lower: Whether to lowercase the response.
 
     Returns:
-        The string the user entered, or None if EOF (e.g. Ctrl+D).
+          The string the user entered, or None if EOF (e.g. Ctrl+D).
     """
     prompt = f'{prompt} ({"/".join(choices)})? '
     try:
@@ -159,23 +162,23 @@ def str_prompt(
 
 
 def boolean_prompt(
-    prompt="Do you want to continue?",
-    default=True,
-    true_value="yes",
-    false_value="no",
-    prolog=None,
-):
+    prompt: str = "Do you want to continue?",
+    default: bool = True,
+    true_value: str = "yes",
+    false_value: str = "no",
+    prolog: Optional[str] = None,
+) -> bool:
     """Helper function for processing boolean choice prompts.
 
     Args:
-      prompt: The question to present to the user.
-      default: Boolean to return if the user just presses enter.
-      true_value: The text to display that represents a True returned.
-      false_value: The text to display that represents a False returned.
-      prolog: The text to display before prompt.
+        prompt: The question to present to the user.
+        default: Boolean to return if the user just presses enter.
+        true_value: The text to display that represents a True returned.
+        false_value: The text to display that represents a False returned.
+        prolog: The text to display before prompt.
 
     Returns:
-      True or False.
+        True or False.
     """
     true_value, false_value = true_value.lower(), false_value.lower()
     true_text, false_text = true_value, false_value
