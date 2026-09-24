@@ -237,6 +237,117 @@ class PlaceholderTests(unittest.TestCase):
         """Verify handling of BUILD_OS."""
         self.assertEqual(self.replacer.get("BUILD_OS"), m.return_value)
 
+    @mock.patch.dict(
+        os.environ,
+        {"PREUPLOAD_COMMIT": "5c4c293174bb61f0f39035a71acd9084abfa743d"},
+    )
+    def testSubtreePathResolution(self):
+        """Verify fallback resolution of subtree paths under REPO_ROOT."""
+        replacer = rh.hooks.Placeholders(
+            fallback_subtrees=["android", "kernel", "bootloader"]
+        )
+        with mock.patch.object(
+            rh.git, "find_repo_root", return_value="/workspace"
+        ):
+            # 1. Path exists under explicitly configured subtree (android/)
+            def fake_exists(path):
+                return (
+                    path
+                    == "/workspace/android/prebuilts/checkstyle/checkstyle.py"
+                )
+
+            with mock.patch("os.path.exists", side_effect=fake_exists):
+                input_args = [
+                    "${REPO_ROOT}/prebuilts/checkstyle/checkstyle.py",
+                    "--sha",
+                    "${PREUPLOAD_COMMIT}",
+                ]
+                output = replacer.expand_vars(input_args)
+                self.assertEqual(
+                    output,
+                    [
+                        "/workspace/android/prebuilts/checkstyle/checkstyle.py",
+                        "--sha",
+                        os.environ["PREUPLOAD_COMMIT"],
+                    ],
+                )
+
+            # 2. Path exists under fallback domain (kernel/)
+            def fake_exists_kernel(path):
+                return path == "/workspace/kernel/vendor/google/tools/alint"
+
+            with mock.patch("os.path.exists", side_effect=fake_exists_kernel):
+                input_args = ["${REPO_ROOT}/vendor/google/tools/alint"]
+                output = replacer.expand_vars(input_args)
+                self.assertEqual(
+                    output,
+                    ["/workspace/kernel/vendor/google/tools/alint"],
+                )
+
+            # 3. Precedence: First matching subtree wins
+            def fake_exists_both(path):
+                return path in (
+                    "/workspace/android/tools/checker",
+                    "/workspace/kernel/tools/checker",
+                )
+
+            with mock.patch("os.path.exists", side_effect=fake_exists_both):
+                input_args = ["${REPO_ROOT}/tools/checker"]
+                output = replacer.expand_vars(input_args)
+                self.assertEqual(output, ["/workspace/android/tools/checker"])
+
+            # 4. Path exists directly at repo root (no fallback needed)
+            def fake_exists_root(path):
+                return path == "/workspace/prebuilts/checkstyle/checkstyle.py"
+
+            with mock.patch("os.path.exists", side_effect=fake_exists_root):
+                input_args = ["${REPO_ROOT}/prebuilts/checkstyle/checkstyle.py"]
+                output = replacer.expand_vars(input_args)
+                self.assertEqual(
+                    output,
+                    ["/workspace/prebuilts/checkstyle/checkstyle.py"],
+                )
+
+            # 5. Negative case: Path does not exist anywhere
+            def fake_exists_none(_path):
+                return False
+
+            with mock.patch("os.path.exists", side_effect=fake_exists_none):
+                input_args = ["${REPO_ROOT}/nonexistent/tool"]
+                output = replacer.expand_vars(input_args)
+                self.assertEqual(output, ["/workspace/nonexistent/tool"])
+
+            # 6. Safety: Candidate paths that escape repo root are ignored
+            replacer_traversal = rh.hooks.Placeholders(
+                fallback_subtrees=["../outside"]
+            )
+            with mock.patch("os.path.exists", return_value=True):
+                input_args = ["${REPO_ROOT}/tool"]
+                output = replacer_traversal.expand_vars(input_args)
+                self.assertEqual(output, ["/workspace/tool"])
+
+        # 7. Unconfigured subtree is not resolved
+        replacer_empty = rh.hooks.Placeholders(fallback_subtrees=[])
+        with mock.patch.object(
+            rh.git, "find_repo_root", return_value="/workspace"
+        ):
+
+            def fake_exists_unconfigured(path):
+                return (
+                    path
+                    == "/workspace/android/prebuilts/checkstyle/checkstyle.py"
+                )
+
+            with mock.patch(
+                "os.path.exists", side_effect=fake_exists_unconfigured
+            ):
+                input_args = ["${REPO_ROOT}/prebuilts/checkstyle/checkstyle.py"]
+                output = replacer_empty.expand_vars(input_args)
+                self.assertEqual(
+                    output,
+                    ["/workspace/prebuilts/checkstyle/checkstyle.py"],
+                )
+
 
 class ExclusionScopeTests(unittest.TestCase):
     """Verify behavior of ExclusionScope class."""
@@ -312,6 +423,35 @@ class HookOptionsTests(unittest.TestCase):
         self.assertEqual(options.tool_path("cpplint"), "my cpplint")
         # Check an unknown tool fails.
         self.assertRaises(AssertionError, options.tool_path, "extra_tool")
+
+    @mock.patch.object(rh.git, "find_repo_root", return_value="/workspace")
+    def testFallbackSubtrees(self, _m):
+        """Verify fallback_subtrees are passed through HookOptions."""
+        options = rh.hooks.HookOptions(
+            "hook name",
+            ["${REPO_ROOT}/tool"],
+            {"cpplint": "${REPO_ROOT}/prebuilts/cpplint"},
+            fallback_subtrees=["android"],
+        )
+
+        def fake_exists(path):
+            return path in (
+                "/workspace/android/tool",
+                "/workspace/android/prebuilts/cpplint",
+            )
+
+        with mock.patch("os.path.exists", side_effect=fake_exists):
+            self.assertEqual(options.args(), ["/workspace/android/tool"])
+            self.assertEqual(
+                options.tool_path("cpplint"),
+                "/workspace/android/prebuilts/cpplint",
+            )
+            self.assertEqual(
+                rh.hooks.HookOptions.expand_vars(
+                    ["${REPO_ROOT}/tool"], fallback_subtrees=["android"]
+                ),
+                ["/workspace/android/tool"],
+            )
 
 
 class UtilsTests(unittest.TestCase):
@@ -1149,7 +1289,7 @@ class BuiltinHooksTests(unittest.TestCase):
 
         # TODO: Actually pass some valid/invalid json data down.
 
-    def test_ktfmt(self, mock_check, _mock_run):
+    def test_ktfmt(self, mock_check, mock_run):
         """Verify the ktfmt builtin hook."""
         # First call should do nothing as there are no files to check.
         ret = rh.hooks.check_ktfmt(
@@ -1157,6 +1297,8 @@ class BuiltinHooksTests(unittest.TestCase):
         )
         self.assertIsNone(ret)
         self.assertFalse(mock_check.called)
+        # Mock the run to return 1 (files need formatting)
+        mock_run.return_value = rh.utils.CompletedProcess(returncode=1)
         # Check that .kt files are included by default.
         diff = [
             rh.git.RawDiffEntry(file="foo.kt"),
@@ -1274,7 +1416,7 @@ class BuiltinHooksTests(unittest.TestCase):
             self.assertIsNotNone(ret)
             self.assertEqual(
                 ret[0].fixup_cmd,
-                ["alint", "fix", "--no_amend", "--commit", commit],
+                ["alint", "fix", "-y", "--no_amend", "--commit", commit],
             )
             self.assertFalse(ret[0].is_warning())
             self.assertEqual(ret[0].result.returncode, 5)
@@ -1287,7 +1429,7 @@ class BuiltinHooksTests(unittest.TestCase):
             self.assertIsNotNone(ret)
             self.assertEqual(
                 ret[0].fixup_cmd,
-                ["alint", "fix", "--no_amend", "--commit", commit],
+                ["alint", "fix", "-y", "--no_amend", "--commit", commit],
             )
             self.assertTrue(ret[0].is_warning())
             self.assertEqual(ret[0].result.returncode, 6)
