@@ -46,13 +46,32 @@ class Placeholders(object):
     You can return either a string or an iterable (e.g. a list or tuple).
     """
 
-    def __init__(self, diff=()):
+    def __init__(self, diff=(), fallback_subtrees=()):
         """Initialize.
 
         Args:
             diff: The list of files that changed.
+            fallback_subtrees: A list of fallback subtrees to search for paths.
         """
         self.diff = diff
+        self.fallback_subtrees = tuple(fallback_subtrees)
+
+    def _resolve_subtree_path(self, path, repo_root):
+        """Resolve path under project subtrees if not at workspace root."""
+        if repo_root and self.fallback_subtrees and isinstance(path, str):
+            clean_root = repo_root.rstrip(os.sep)
+            root_prefix = clean_root + os.sep
+            if path.startswith(root_prefix) and not os.path.exists(path):
+                rel_from_root = os.path.relpath(path, clean_root)
+                for subtree in self.fallback_subtrees:
+                    candidate = os.path.normpath(
+                        os.path.join(clean_root, subtree, rel_from_root)
+                    )
+                    if candidate.startswith(root_prefix) and os.path.exists(
+                        candidate
+                    ):
+                        return candidate
+        return path
 
     def expand_vars(self, args):
         """Perform place holder expansion on all of |args|.
@@ -108,7 +127,10 @@ class Placeholders(object):
                             r"\$\{(" + "|".join(all_vars) + r")\}", replace, arg
                         )
                     )
-        return ret
+
+        # Dynamic Subtree Resolution
+        repo_root = replacements.get("REPO_ROOT")
+        return [self._resolve_subtree_path(x, repo_root) for x in ret]
 
     @classmethod
     def vars(cls):
@@ -201,22 +223,24 @@ class ExclusionScope(object):
 class HookOptions(object):
     """Holder class for hook options."""
 
-    def __init__(self, name, args, tool_paths):
+    def __init__(self, name, args, tool_paths, fallback_subtrees=()):
         """Initialize.
 
         Args:
             name: The name of the hook.
             args: The override commandline arguments for the hook.
             tool_paths: A dictionary with tool names to paths.
+            fallback_subtrees: A list of fallback subtrees.
         """
         self.name = name
         self._args = args
         self._tool_paths = tool_paths
+        self._fallback_subtrees = tuple(fallback_subtrees)
 
     @staticmethod
-    def expand_vars(args, diff=()):
+    def expand_vars(args, diff=(), fallback_subtrees=()):
         """Perform place holder expansion on all of |args|."""
-        replacer = Placeholders(diff=diff)
+        replacer = Placeholders(diff=diff, fallback_subtrees=fallback_subtrees)
         return replacer.expand_vars(args)
 
     def args(self, default_args=(), diff=()):
@@ -233,7 +257,9 @@ class HookOptions(object):
         if not args:
             args = default_args
 
-        return self.expand_vars(args, diff=diff)
+        return self.expand_vars(
+            args, diff=diff, fallback_subtrees=self._fallback_subtrees
+        )
 
     def tool_path(self, tool_name):
         """Gets the path in which the |tool_name| executable can be found.
@@ -253,7 +279,9 @@ class HookOptions(object):
             return TOOL_PATHS[tool_name]
 
         tool_path = os.path.normpath(self._tool_paths[tool_name])
-        return self.expand_vars([tool_path])[0]
+        return self.expand_vars(
+            [tool_path], fallback_subtrees=self._fallback_subtrees
+        )[0]
 
 
 class CallableHook(NamedTuple):
@@ -566,12 +594,12 @@ def check_ktfmt(project, commit, _desc, diff, options=None):
 
     ktfmt = options.tool_path("ktfmt")
     cmd = (
-        [ktfmt, "--dry-run"]
+        [ktfmt, "--dry-run", "--set-exit-if-changed"]
         + args
         + HookOptions.expand_vars(("${PREUPLOAD_FILES}",), filtered)
     )
     result = _run(cmd)
-    if result.stdout:
+    if result.returncode == 1:
         fixup_cmd = [ktfmt] + args
         return [
             rh.results.HookResult(
@@ -618,35 +646,81 @@ def check_commit_msg_bug_field(project, commit, desc, _diff, options=None):
 def check_commit_msg_changeid_field(project, commit, desc, _diff, options=None):
     """Check the commit message for a 'Change-Id:' line."""
     field = "Change-Id"
-    regex = rf"^{field}: I[a-f0-9]+$"
-    check_re = re.compile(regex)
+    exact_prefix = f"{field}:"
+    lower_prefix = exact_prefix.lower()
+    value_pattern = r"I[a-f0-9]+$"
+    valid_line_re = re.compile(rf"^{exact_prefix} {value_pattern}")
 
     if options.args():
         raise ValueError(f"commit msg {field} check takes no options")
 
-    found = []
+    total_count = 0
+    has_casing_error = False
+    has_format_error = False
     for line in desc.splitlines():
-        if check_re.match(line):
-            found.append(line)
+        line_lower = line.lower()
+        if line_lower.startswith(lower_prefix):
+            total_count += 1
+            if not line.startswith(exact_prefix):
+                has_casing_error = True
+            elif not valid_line_re.match(line):
+                has_format_error = True
 
-    if not found:
-        error = (
-            f'Commit message is missing a "{field}:" line.  It must match the\n'
-            f"following case-sensitive regex:\n\n    {regex}"
+    ret = []
+    if has_casing_error:
+        ret.append(
+            rh.results.HookResult(
+                f'commit msg: "{field}:" check',
+                project,
+                commit,
+                error=(
+                    f'Commit message has invalid casing for "{field}:".  '
+                    f'It must match exact case "{field}:".'
+                ),
+            )
         )
-    elif len(found) > 1:
-        error = (
-            f'Commit message has too many "{field}:" lines.  There can be '
-            "only one."
-        )
-    else:
-        return None
 
-    return [
-        rh.results.HookResult(
-            f'commit msg: "{field}:" check', project, commit, error=error
+    if has_format_error:
+        ret.append(
+            rh.results.HookResult(
+                f'commit msg: "{field}:" check',
+                project,
+                commit,
+                error=(
+                    f'Commit message has an invalid "{field}:" value format.  '
+                    f"It must start with 'I' followed by hex digits "
+                    f"(regex: {value_pattern})."
+                ),
+            )
         )
-    ]
+
+    if total_count == 0:
+        ret.append(
+            rh.results.HookResult(
+                f'commit msg: "{field}:" check',
+                project,
+                commit,
+                error=(
+                    f'Commit message is missing a "{field}:" line.  '
+                    f"It must match the following case-sensitive regex:\n\n    "
+                    f"^{exact_prefix} {value_pattern}"
+                ),
+            )
+        )
+    elif total_count > 1:
+        ret.append(
+            rh.results.HookResult(
+                f'commit msg: "{field}:" check',
+                project,
+                commit,
+                error=(
+                    f'Commit message has too many "{field}:" lines.  '
+                    "There can be only one."
+                ),
+            )
+        )
+
+    return ret or None
 
 
 PREBUILT_APK_MSG = """Commit message is missing required prebuilt APK
@@ -1309,7 +1383,7 @@ def check_alint(project, commit, _desc, diff, options=None):
     head_hash = rh.git.get_commit_for_ref("HEAD")
     is_head = commit in ("HEAD", head_hash)
     fixup_cmd = (
-        [alint_path, "fix", "--no_amend", "--commit", commit]
+        [alint_path, "fix", "-y", "--no_amend", "--commit", commit]
         if is_head and result.returncode in (5, 6)
         else None
     )
