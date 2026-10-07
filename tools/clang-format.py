@@ -16,13 +16,13 @@
 """Wrapper to run git-clang-format and parse its output."""
 
 import argparse
-import os
+from pathlib import Path
 import sys
 
-_path = os.path.realpath(__file__ + "/../..")
-if sys.path[0] != _path:
-    sys.path.insert(0, _path)
-del _path
+
+THIS_FILE = Path(__file__).resolve()
+THIS_DIR = THIS_FILE.parent
+sys.path.insert(0, str(THIS_DIR.parent))
 
 # We have to import our local modules after the sys.path tweak.  We can't use
 # relative imports because this is an executable program, not a module.
@@ -59,7 +59,7 @@ def get_parser():
         "--extensions",
         metavar="EXTENSIONS",
         type=str,
-        help="Comma-separated list of file extensions to " "format.",
+        help="Comma-separated list of file extensions to format.",
     )
     parser.add_argument(
         "--fix",
@@ -85,7 +85,7 @@ def get_parser():
         "files",
         type=str,
         nargs="*",
-        help="If specified, only consider differences in " "these files.",
+        help="If specified, only consider differences in these files.",
     )
     return parser
 
