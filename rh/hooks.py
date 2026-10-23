@@ -440,20 +440,20 @@ def check_black(project, commit, _desc, diff, options=None):
 
     tool = options.tool_path("black")
     tool_options = options.args((), filtered)
-    cmd = [tool, "--check"] + tool_options
+    cmd = [tool, "-q", "--check", "-"] + tool_options
     fixup_cmd = [tool] + tool_options + ["--"]
 
     ret = []
     for d in filtered:
         data = rh.git.get_file_content(commit, d.file)
         result = _run(cmd, input=data)
-        if result.stdout:
+        if result.returncode:
             ret.append(
                 rh.results.HookResult(
                     "black",
                     project,
                     commit,
-                    error=result.stdout,
+                    error=result.stdout or "Files not formatted",
                     files=(d.file,),
                     fixup_cmd=fixup_cmd,
                 )
